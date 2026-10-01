@@ -10,6 +10,7 @@ scripted flooding rather than credential guessing.
 
 from __future__ import annotations
 
+import os
 import time
 import threading
 from collections import defaultdict, deque
@@ -49,11 +50,18 @@ class RateLimiter:
 analyze_limiter = RateLimiter(max_attempts=60, window_seconds=60)
 
 
+# X-Forwarded-For is only honored behind a proxy you control (TRUST_PROXY=1), and then only its LAST entry:
+# anything to the left was written by the client, so trusting it would let anyone dodge the rate limit.
+TRUST_PROXY = os.environ.get("TRUST_PROXY", "0") == "1"
+MAX_BODY_BYTES = 64 * 1024              # /analyze takes at most ~21k characters of text; JSON overhead aside, 64 KB is plenty
+
+
 def client_key(request: Request, bucket: str) -> str:
     ip = request.client.host if request.client else "unknown"
-    fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        ip = fwd.split(",")[0].strip() or ip
+    if TRUST_PROXY:
+        parts = [p.strip() for p in request.headers.get("x-forwarded-for", "").split(",") if p.strip()]
+        if parts:
+            ip = parts[-1][:64]
     return f"{bucket}:{ip}"
 
 

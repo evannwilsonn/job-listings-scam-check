@@ -27,3 +27,24 @@ def test_ssn_for_payroll_after_hire_is_fine():
 def test_ordinary_posting_is_clear():
     assert band("Marketing Intern", "Help plan campus events and write social posts. 15 hours a week, $16/hr. "
                 "Apply through our careers page.", "Acme") == "clear"
+
+
+def test_api_refuses_oversized_bodies_and_ignores_spoofed_client_addresses():
+    from fastapi.testclient import TestClient
+    from scam_detector import api, security
+    c = TestClient(api.app)
+    assert c.post("/analyze", json={"description": "Pay a $90 training fee to start", "run_network": False}).status_code == 200
+    big = b'{"description": "' + b"a" * 70_000 + b'"}'
+    assert c.post("/analyze", content=big, headers={"content-type": "application/json"}).status_code == 413
+    security.analyze_limiter._hits.clear()
+    codes = [c.post("/analyze", json={"description": "hello", "run_network": False},
+                    headers={"x-forwarded-for": f"198.51.100.{i}"}).status_code for i in range(61)]
+    assert codes[-1] == 429                      # a made-up X-Forwarded-For doesn't buy a fresh allowance
+
+
+def test_network_lookups_are_capped():
+    from scam_detector import scorer
+    from scam_detector.intel import findings
+    text = " ".join(f"contact{i}@domain{i}.example" for i in range(500))
+    assert len(findings._extract(text, [], "")[2]) <= findings.MAX_HOSTS
+    assert scorer.MAX_NETWORK_DOMAINS == 8

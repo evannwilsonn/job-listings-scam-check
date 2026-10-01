@@ -20,9 +20,29 @@ from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from .scorer import score_posting
-from .security import enforce_rate_limit, analyze_limiter
+from .security import enforce_rate_limit, analyze_limiter, MAX_BODY_BYTES
 
 app = FastAPI(title="Job Scam Detector", version="1.0")
+
+
+@app.middleware("http")
+async def _limit_body(request: Request, call_next):
+    """Refuse oversized bodies before they are read and parsed (the Field caps below only apply after parsing)."""
+    from fastapi.responses import JSONResponse
+    cl = request.headers.get("content-length", "")
+    if (cl and (not cl.isdigit() or int(cl) > MAX_BODY_BYTES)):
+        return JSONResponse({"detail": "Request body too large or malformed."}, status_code=413)
+    if request.method == "POST":
+        body = b""
+        async for chunk in request.stream():
+            body += chunk
+            if len(body) > MAX_BODY_BYTES:
+                return JSONResponse({"detail": "Request body too large."}, status_code=413)
+        request._body = body                      # let the route parse what was already read
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.exception_handler(HTTPException)

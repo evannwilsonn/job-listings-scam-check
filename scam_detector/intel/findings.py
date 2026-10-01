@@ -95,7 +95,8 @@ def _extract(text: str, urls: Sequence[str], sender: str):
     scrubbed = re.sub(r"[\w.+-]+@[\w.-]+", " ", scrubbed)
     for m in _BARE_DOMAIN_RE.finditer(scrubbed):
         add_host(m.group(1))
-    return all_urls, hosts, email_domains
+    # Each email domain costs SPF and DMARC lookups; a message stuffed with hundreds of addresses must not fan out.
+    return all_urls, hosts, email_domains[:MAX_HOSTS]
 
 
 def _phones(text: str) -> list:

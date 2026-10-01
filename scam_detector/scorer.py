@@ -28,6 +28,8 @@ from .enrichment.mx_check import check_mx
 from .enrichment.compensation import check_compensation
 from .enrichment.url_flow import analyze_url_chain
 
+MAX_NETWORK_DOMAINS = 8
+
 
 @dataclass
 class ScoreResult:
@@ -72,7 +74,9 @@ def _enrichment_findings(title: str, description: str, company: str,
             [comp.detail],
         ))
 
-    domains = extract_domains(full_text)
+    # Network lookups for at most MAX_NETWORK_DOMAINS domains: each one is an RDAP request plus an MX lookup, and a
+    # pasted wall of addresses must not turn one request into hundreds of outbound calls.
+    domains = extract_domains(full_text)[:MAX_NETWORK_DOMAINS]
     if run_network and domains:
         # Run domain-age and MX lookups concurrently; they're independent network I/O.
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
