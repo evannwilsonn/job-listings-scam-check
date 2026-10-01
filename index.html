@@ -1,543 +1,541 @@
-<meta charset="UTF-8">
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Scam Check — Is this job posting real?</title>
+<title>Job Scam Check</title>
+<meta name="description" content="Paste a job posting or recruiter message and see whether it matches known job-scam patterns. Runs entirely in your browser.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
-:root {
-  --bg: #0C0F14;
-  --surface: #161A22;
-  --surface-2: #1E232C;
-  --border: #2A303C;
-  --text: #E2E6ED;
-  --text-soft: #8B95A5;
-  --accent: #4A9EFF;
-  --red: #E54D42;
-  --amber: #D4943A;
-  --green: #3D9A6E;
-  --red-bg: rgba(229,77,66,.1);
-  --amber-bg: rgba(212,148,58,.1);
-  --green-bg: rgba(61,154,110,.1);
+:root{
+  --bg:#050A14;--panel:#08111F;--panel2:#0D1A2E;--line:#1C2B44;--line2:#2A3D5C;
+  --text:#E8ECF4;--soft:#97A3B8;--dim:#6B778C;
+  --gold:#E2BE6A;--gold-hi:#FBE7AE;--gold-lo:#C99B45;
+  --foil:linear-gradient(135deg,#FBE7AE 0%,#E2BE6A 45%,#C99B45 100%);
+  --garnet:#8C2F45;--crimson:#E5484D;--amber:#E0A23A;--green:#3FB27F;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
 }
+*{box-sizing:border-box;margin:0}
+html{background:var(--bg)}
+body{font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;min-height:100vh;
+  background-image:radial-gradient(1200px 500px at 50% -200px,rgba(226,190,106,.10),transparent 70%)}
+.wrap{max-width:760px;margin:0 auto;padding:40px 16px 80px}
+header{display:flex;align-items:center;gap:12px;margin-bottom:28px}
+.brand{white-space:nowrap;font-family:'Playfair Display',Georgia,serif;font-size:22px;font-weight:700;letter-spacing:.01em}
+.brand b{background:var(--foil);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tag{margin-left:auto;font:600 11px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--gold);
+  border:1px solid rgba(226,190,106,.35);border-radius:999px;padding:4px 10px}
+h1{font-family:'Playfair Display',Georgia,serif;font-size:clamp(30px,6vw,42px);line-height:1.15;margin-bottom:10px}
+.lede{color:var(--soft);max-width:58ch;margin-bottom:28px}
+.card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:14px;padding:20px}
+.tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.tab{font:600 13px Inter,sans-serif;color:var(--soft);background:transparent;border:1px solid var(--line2);border-radius:999px;padding:7px 14px;cursor:pointer}
+.tab[aria-selected=true]{color:#0A0F1A;background:var(--foil);border-color:transparent}
+label{display:block;font-weight:600;font-size:14px;margin:14px 0 6px}
+label:first-of-type{margin-top:0}
+.hint{color:var(--dim);font-weight:400;font-size:13px}
+textarea,input{width:100%;background:#050C18;border:1px solid var(--line2);border-radius:8px;color:var(--text);
+  font:14px/1.55 Inter,sans-serif;padding:11px 13px}
+textarea{min-height:180px;resize:vertical}
+textarea:focus,input:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px rgba(226,190,106,.15)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:560px){.row{grid-template-columns:1fr}}
+.actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
+button.go{background:var(--foil);color:#0A0F1A;border:0;border-radius:8px;padding:12px 22px;font:700 15px Inter,sans-serif;cursor:pointer}
+button.go:disabled{opacity:.45;cursor:default}
+button.ghost{background:none;border:1px solid var(--line2);border-radius:8px;color:var(--soft);padding:11px 16px;font:500 14px Inter,sans-serif;cursor:pointer}
+button.ghost:hover{border-color:var(--gold);color:var(--text)}
+.private{margin-top:12px;color:var(--dim);font-size:12.5px}
 
-* { box-sizing: border-box; margin: 0; }
-
-body {
-  font-family: 'Inter', system-ui, sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  line-height: 1.6;
-  min-height: 100vh;
-}
-
-.container {
-  max-width: 640px;
-  margin: 0 auto;
-  padding: 32px 20px 80px;
-}
-
-h1 {
-  font-size: 28px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  margin-bottom: 8px;
-}
-
-.subtitle {
-  color: var(--text-soft);
-  font-size: 15px;
-  margin-bottom: 32px;
-  max-width: 50ch;
-}
-
-.field-label {
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 6px;
-  display: block;
-}
-
-.field-hint {
-  font-size: 13px;
-  color: var(--text-soft);
-  margin-bottom: 8px;
-}
-
-textarea, input[type=text] {
-  width: 100%;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  font-family: inherit;
-  font-size: 14px;
-  padding: 12px 14px;
-  line-height: 1.55;
-  resize: vertical;
-  transition: border-color .15s;
-}
-
-textarea:focus, input:focus { border-color: var(--accent); outline: none; }
-textarea { min-height: 160px; }
-
-.field-group { margin-bottom: 20px; }
-
-.flags-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-@media (max-width: 520px) { .flags-grid { grid-template-columns: 1fr; } }
-
-.flag-btn {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text-soft);
-  font-family: inherit;
-  font-size: 13px;
-  padding: 10px 12px;
-  text-align: left;
-  cursor: pointer;
-  transition: all .15s;
-  line-height: 1.4;
-}
-
-.flag-btn:hover { border-color: var(--text-soft); }
-.flag-btn.active {
-  border-color: var(--accent);
-  background: rgba(74,158,255,.08);
-  color: var(--text);
-}
-
-.actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 6px;
-}
-
-.btn-primary {
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  padding: 13px 24px;
-  font-family: inherit;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity .15s;
-}
-
-.btn-primary:hover { opacity: .9; }
-.btn-primary:disabled { opacity: .4; cursor: default; }
-
-.btn-ghost {
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text-soft);
-  padding: 12px 18px;
-  font-family: inherit;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.btn-ghost:hover { border-color: var(--text-soft); }
-.btn-ghost:disabled { opacity: .4; cursor: default; }
-
-.status-msg {
-  font-size: 13px;
-  color: var(--text-soft);
-  margin-top: 10px;
-  min-height: 20px;
-}
-
-.status-msg.err { color: var(--red); }
-
-/* --- Results --- */
-
-.results { margin-top: 36px; display: none; }
-.results.show { display: block; }
-
-.verdict-card {
-  border-radius: 8px;
-  padding: 20px 22px;
-  margin-bottom: 24px;
-}
-
-.verdict-card.block { background: var(--red-bg); border-left: 3px solid var(--red); }
-.verdict-card.review { background: var(--amber-bg); border-left: 3px solid var(--amber); }
-.verdict-card.caution { background: var(--amber-bg); border-left: 3px solid var(--amber); }
-.verdict-card.clear { background: var(--green-bg); border-left: 3px solid var(--green); }
-
-.verdict-score {
-  font-size: 44px;
-  font-weight: 700;
-  letter-spacing: -0.04em;
-  line-height: 1;
-}
-
-.verdict-card.block .verdict-score { color: var(--red); }
-.verdict-card.review .verdict-score, .verdict-card.caution .verdict-score { color: var(--amber); }
-.verdict-card.clear .verdict-score { color: var(--green); }
-
-.verdict-text {
-  font-size: 15px;
-  margin-top: 8px;
-  color: var(--text);
-}
-
-.findings-list { list-style: none; padding: 0; }
-
-.finding-item {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 14px 16px;
-  margin-bottom: 10px;
-}
-
-.finding-header {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.sev-tag {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .04em;
-  flex-shrink: 0;
-}
-
-.sev-tag.critical { color: var(--red); }
-.sev-tag.warning { color: var(--amber); }
-.sev-tag.note { color: var(--text-soft); }
-
-.finding-title {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.finding-why {
-  font-size: 13px;
-  color: var(--text-soft);
-  margin-top: 2px;
-}
-
-.finding-matched {
-  font-size: 12px;
-  color: var(--text-soft);
-  margin-top: 6px;
-  word-break: break-word;
-}
-
-.clear-msg {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 16px;
-  font-size: 14px;
-  color: var(--text-soft);
-}
-
-.section-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-soft);
-  margin-bottom: 12px;
-  text-transform: uppercase;
-  letter-spacing: .05em;
-}
-
-.disclaimer {
-  font-size: 12px;
-  color: var(--text-soft);
-  margin-top: 32px;
-  padding-top: 20px;
-  border-top: 1px solid var(--border);
-  max-width: 55ch;
-}
+#result{margin-top:24px}
+.verdict{display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center}
+@media(max-width:560px){.verdict{grid-template-columns:1fr;justify-items:start}}
+.scan{position:relative;width:132px;height:132px}
+.scan svg{width:100%;height:100%;transform:rotate(-90deg)}
+.scan .num{position:absolute;inset:0;display:grid;place-items:center;text-align:center;font:700 34px var(--mono)}
+.scan .num small{display:block;font:600 10px var(--mono);letter-spacing:.14em;color:var(--dim);margin-top:-6px}
+.lvl{font:600 11px var(--mono);letter-spacing:.14em;text-transform:uppercase}
+.vt{font-family:'Playfair Display',Georgia,serif;font-size:26px;line-height:1.2;margin:4px 0 6px}
+.advice{color:var(--soft)}
+.k-ok{--c:var(--green)}.k-caution{--c:var(--amber)}.k-warn{--c:#F07A3A}.k-bad{--c:var(--crimson)}
+.lvl,.num{color:var(--c)}
+.verdict.card{border-color:color-mix(in srgb,var(--c) 45%,var(--line))}
+h2{font:600 12px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin:26px 0 10px}
+.f{border:1px solid var(--line);border-left:3px solid var(--fc);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:var(--panel)}
+.f.critical{--fc:var(--crimson)}.f.warning{--fc:var(--amber)}.f.note{--fc:var(--dim)}
+.f .t{display:flex;gap:10px;align-items:baseline;justify-content:space-between;font-weight:600}
+.f .sev{font:600 10.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--fc);white-space:nowrap}
+.f p{color:var(--soft);font-size:14px;margin-top:4px}
+.f code{display:inline-block;font:12.5px var(--mono);color:var(--gold-hi);background:rgba(226,190,106,.08);
+  border:1px solid rgba(226,190,106,.2);border-radius:5px;padding:1px 6px;margin:6px 6px 0 0;word-break:break-word}
+.lg{border-color:rgba(224,162,58,.45)}
+.lg ul,.steps{padding-left:20px;color:var(--soft);font-size:14px}
+.lg li,.steps li{margin-top:4px}
+.empty{color:var(--soft)}
+footer{margin-top:44px;color:var(--dim);font-size:12.5px;border-top:1px solid var(--line);padding-top:16px}
+footer a{color:var(--gold)}
 </style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <svg width="34" height="34" viewBox="0 0 40 40" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FBE7AE"/><stop offset=".45" stop-color="#E2BE6A"/><stop offset="1" stop-color="#C99B45"/></linearGradient></defs><path d="M20 3 L34 8 V19 C34 28 28 34 20 37 C12 34 6 28 6 19 V8 Z" fill="#782F40"/><path d="M20 11 L22.4 17.6 L29 20 L22.4 22.4 L20 29 L17.6 22.4 L11 20 L17.6 17.6 Z" fill="url(#g)"/></svg>
+    <span class="brand">Job Scam <b>Check</b></span>
+    <span class="tag">Rules 2026.09.30.2</span>
+  </header>
 
-<div class="container">
   <h1>Is this job real?</h1>
-  <p class="subtitle">Paste the posting or the recruiter's message. Check what you observed about the account. Get a scored verdict with the reasons.</p>
+  <p class="lede">Paste a job posting or a recruiter's message. It's checked against known job-scam patterns (fees to start, fake checks, money-mule work, gift-card pay, chat-app interviews and more), and every warning shows the exact words that triggered it.</p>
 
-  <div class="field-group">
-    <label class="field-label">Posting or recruiter message</label>
-    <p class="field-hint">The full text — include contact details, pay claims, and any instructions they gave you.</p>
-    <textarea id="text" placeholder="Paste the full text here"></textarea>
-  </div>
-
-  <div class="field-group">
-    <label class="field-label">Company name (if given)</label>
-    <input type="text" id="company" placeholder="e.g. Yovix, Leaf Home, RemoteHunter">
-  </div>
-
-  <div class="field-group">
-    <label class="field-label">Apply URL (if you have it)</label>
-    <p class="field-hint">Where the apply button actually sent you. Separate hops with -&gt; if you followed a chain.</p>
-    <input type="text" id="url" placeholder="e.g. https://remotehunter.com/apply-with-ai/...?utm_source=linkedin">
-  </div>
-
-  <div class="field-group">
-    <label class="field-label">What did you notice about the account?</label>
-    <p class="field-hint">Check everything that applies. These are things you see on the profile — the tool can't check them itself.</p>
-    <div class="flags-grid" id="flags">
-      <button class="flag-btn" data-flag="very_low_connections">Very few connections (&lt;10)</button>
-      <button class="flag-btn" data-flag="low_connections">Low connections (&lt;50)</button>
-      <button class="flag-btn" data-flag="no_profile_photo">No profile photo</button>
-      <button class="flag-btn" data-flag="stock_photo_face">Photo looks fake / AI</button>
-      <button class="flag-btn" data-flag="thin_profile">Thin profile, barely filled out</button>
-      <button class="flag-btn" data-flag="no_activity_history">No posts or activity</button>
-      <button class="flag-btn" data-flag="recruiter_new_account">Account seems brand new</button>
-      <button class="flag-btn" data-flag="duplicate_accounts">Saw the same from other accounts</button>
-      <button class="flag-btn" data-flag="same_script_seen_before">Identical script from other people</button>
-      <button class="flag-btn" data-flag="no_company_page">No real company page</button>
-      <button class="flag-btn" data-flag="no_company_insights">No company data on LinkedIn</button>
-      <button class="flag-btn" data-flag="company_insights_present">Full company insights shown</button>
-      <button class="flag-btn" data-flag="dodged_verification">Dodged when I asked to verify</button>
-      <button class="flag-btn" data-flag="name_company_mismatch">Name doesn't match company</button>
-      <button class="flag-btn" data-flag="poster_distant_connection">Poster is 3rd+ / no connection</button>
+  <form class="card" id="form" autocomplete="off">
+    <div class="tabs" role="tablist">
+      <button type="button" class="tab" role="tab" aria-selected="true" data-mode="posting">Job posting</button>
+      <button type="button" class="tab" role="tab" aria-selected="false" data-mode="message">Message or email</button>
     </div>
-  </div>
-
-  <div class="actions">
-    <button class="btn-primary" id="check">Check this</button>
-    <button class="btn-ghost" id="aiPass" disabled>Add language analysis</button>
-  </div>
-  <p class="status-msg" id="status"></p>
-
-  <div class="results" id="results">
-    <div class="verdict-card" id="verdictCard">
-      <div class="verdict-score" id="score"></div>
-      <p class="verdict-text" id="verdict"></p>
+    <div id="posting-fields">
+      <div class="row">
+        <div><label for="title">Job title <span class="hint">optional</span></label><input id="title" placeholder="Remote Data Entry Assistant"></div>
+        <div><label for="company">Company <span class="hint">optional</span></label><input id="company" placeholder="Acme Corp"></div>
+      </div>
+      <label for="url">Apply link <span class="hint">optional, not opened</span></label>
+      <input id="url" placeholder="https://…">
     </div>
+    <div id="message-fields" hidden>
+      <label for="sender">Sender <span class="hint">optional, name and email address</span></label>
+      <input id="sender" placeholder="Jane Smith &lt;jane@example.com&gt;">
+    </div>
+    <label for="text" id="text-label">Posting text</label>
+    <textarea id="text" placeholder="Paste the full text here…"></textarea>
+    <div class="actions">
+      <button class="go" id="go" type="submit" disabled>Check it</button>
+      <button class="ghost" type="button" id="sample">Try a sample</button>
+      <button class="ghost" type="button" id="clear">Clear</button>
+    </div>
+    <p class="private">Runs entirely in your browser. Nothing you paste is sent anywhere or saved.</p>
+  </form>
 
-    <p class="section-label">What turned up</p>
-    <ul class="findings-list" id="findingsList"></ul>
+  <div id="result" aria-live="polite"></div>
 
-    <p class="disclaimer">
-      This scores text, URLs, and what you reported about the account. It does not access LinkedIn, 
-      scan profiles, or verify employers automatically. A low score is not a clearance — always 
-      verify the employer through their own site before sharing personal information.
-    </p>
-  </div>
+  <footer>
+    A pattern match is a reason to slow down, not proof either way. A clean result can still be a scam, so always confirm the job on the employer's own website before sharing personal details.
+    Report job scams at <a href="https://reportfraud.ftc.gov" rel="noopener">reportfraud.ftc.gov</a>.
+    Rulepack 2026.09.30.2 · 33 active rules.
+  </footer>
 </div>
 
+<script>window.NCS_RULEPACK = {"version":"2026.09.30.2","rules":[{"id":"advance_fee","status":"active","severity":"critical","weight":30,"title":"You're asked to pay something","why":"Legitimate employers never charge you to start work. The single most reliable scam marker.","phrases":["training fee","registration fee","application fee","processing fee","onboarding fee","background check fee","starter kit","pay for your own equipment","purchase the equipment","buy the software","refundable deposit","security deposit","administrative fee","certification fee","check to purchase","check for equipment","check to buy","funds to purchase","money for equipment","training with a fee"],"patterns":["\\b(?:fees?|tuition|charges?)\\b[^.\\n]{0,40}\\b(?:training|course|program|certification|onboarding|registration|processing|kit|equipment|softwares?|laptop|visa)\\b","\\b(?:training|course|program|certification|onboarding|registration|application|processing|visa|equipment|software|kit)\\s+(?:fees?|charges?|tuition|costs?)\\b","\\$\\s?\\d[\\d,]*(?:\\.\\d\\d)?\\s+(?:paid\\s+)?(?:certification|training|course|program|mentorship|kit|software|equipment)\\b","\\b(?:must|need to|have to|required to|first)\\b[^.\\n]{0,30}\\b(?:obtain|purchase|buy|pay(?: for)?)\\b[^.\\n]{0,30}\\$\\s?\\d[\\d,]*[^.\\n]{0,20}\\b(?:certification|training|course|program|onboarding|software|equipment|vendor|kit|fee)\\b","\\b(?:pay|paying|send)\\s+(?:the\\s+|our\\s+|an?\\s+)?(?:vendor|hr agent|agent|recruiter|supplier)\\b[^.\\n]{0,40}\\$?\\s?\\d","\\bpay\\b[^.\\n]{0,40}\\$\\s?\\d[\\d,]*[^.\\n]{0,40}\\b(?:to our|to the)\\s+(?:hr\\s+)?(?:agent|recruiter|manager|vendor)\\b","\\b(?:are you able to|can you|could you|please|kindly|you (?:will )?(?:need to|must|have to))\\s+(?:\\w+\\s+){0,2}(?:cover|front|pay for)\\s+(?:the\\s+|these\\s+|those\\s+)?(?:expenses?|costs?|fees?)\\b"],"guards":["negation"],"min_matches":1,"bonus":3,"added":"2026-09-29","source":"original"},{"id":"money_mule","status":"active","severity":"critical","weight":34,"title":"The job involves moving money or packages","why":"Depositing checks and forwarding funds, or reshipping parcels, is how stolen money and goods get laundered.","phrases":["deposit the check","cash the check","cashier's check","cashiers check","forward the funds","transfer the remaining","wire the balance","process payments on behalf","package forwarding","reship","money transfer agent"],"patterns":["\\b(?:mail|send|issue|email|deliver|give)\\w*\\s+you\\s+(?:a\\s+|the\\s+)?(?:check|cheque|paycheck)\\b[^.\\n]{0,90}\\b(?:deposit|purchase|equipment|supplies|expenses|software|vendor)\\b","\\b(?:attached|enclosed)\\s+is\\s+the\\s+(?:pay)?check\\b[^.\\n]{0,60}\\b(?:cover|expenses|supplies|purchase)\\b","\\bkeep\\s+(?:\\$\\s?\\d[\\d,]*|\\d{1,3}\\s?%)[^.\\n]{0,60}\\b(?:pay|salary|commission|fee|cut)\\b","\\b(?:customers?|clients?|buyers?)\\s+(?:will\\s+)?(?:pay|send|deposit)\\s+(?:into|to)\\s+your\\s+(?:personal\\s+|own\\s+)?(?:bank\\s+)?account\\b","\\b(?:transfer|send|wire|forward|remit)\\b[^.\\n]{0,40}\\b\\d{1,3}\\s?%[^.\\n]{0,40}\\b(?:partner|account|us|our|company)\\b","\\b(?:receive|accept|inspect)\\s+(?:the\\s+)?(?:parcels?|packages?|shipments?|boxes|goods)\\b[^.\\n]{0,80}\\b(?:your\\s+(?:home\\s+)?address|your\\s+home|at\\s+home|residence)\\b","\\b(?:relabel|re-?label|repackage|re-ship)\\w*\\b","\\bprepaid\\s+(?:shipping\\s+)?labels?\\b"],"guards":[],"min_matches":1,"bonus":3,"added":"2026-09-29","source":"original"},{"id":"mystery_shopping","status":"active","severity":"warning","weight":16,"title":"Mystery-shopper work","why":"Real mystery shopping exists, but 'mystery shopper' is also the usual cover story for fake-check scams. Never deposit a check or send money as part of an assignment.","phrases":["mystery shopper","secret shopper","mystery shopping"],"patterns":[],"guards":[],"min_matches":1,"bonus":3,"added":"2026-09-29","source":"original"},{"id":"banking_pii","status":"active","severity":"critical","weight":26,"title":"Banking or identity details wanted up front","why":"Account and identity details come after a signed offer, through payroll, never over chat during screening.","phrases":["routing number","bank account number","voided check","social security number","your ssn","driver's license number","drivers license number","copy of your id","photo of your id","direct deposit form"],"patterns":["\\b(?:send|provide|share|text|email|upload|scan|snap|attach)\\b[^.\\n]{0,50}\\b(?:ssn|social security|driver'?s? licen[sc]e|passport|bank (?:account|details|info\\w*|login)|routing|account number|photo id|id card)\\b"],"guards":["negation","post_hire"],"min_matches":1,"bonus":3,"added":"2026-09-29","source":"original"},{"id":"irreversible_pay","status":"active","severity":"critical","weight":24,"title":"Payment through irreversible channels","why":"Gift cards, crypto and wire services can't be reversed or traced, and no payroll pays in them. Being asked to SEND money through Zelle, Cash App or Venmo is the same trap. (Small gigs paying you through PayPal or Venmo is common and is not flagged on its own.)","phrases":[],"patterns":["\\b(?:send|sent|deposit|transfer|buy|purchase|codes?|top\\s?up|recharge|wire|withdraw\\w*|reimburse\\w*|pay\\s+(?:for|us|them|the|a|your|back))\\b[^.\\n]{0,40}\\b(?:bitcoin|btc|usdt|usdc|crypto(?:currency)?|gift\\s+cards?|apple\\s+cards?|itunes|zelle|cash\\s?app|venmo|western\\s+union|moneygram)\\b","\\b(?:paid|payment|payments|salary|wages?|pay)\\b[^.\\n]{0,40}\\b(?:bitcoin|btc|usdt|usdc|crypto(?:currency)?|gift\\s+cards?|apple\\s+cards?|itunes|western\\s+union|moneygram)\\b","\\b(?:bitcoin|btc|usdt|usdc|crypto(?:currency)?|gift\\s+cards?|apple\\s+cards?|itunes|western\\s+union|moneygram)\\b[^.\\n]{0,25}\\b(?:paid|payment|payments|salary|deposit|transfer|codes?)\\b"],"guards":["negation"],"min_matches":1,"bonus":3,"added":"2026-09-29","source":"original","history":[{"date":"2026-09-30","change":"stopped flagging P2P apps used to PAY the worker (false positives on a real mystery-shop audit and a real promoter gig in the Sept 2026 field test); still flags sending money through them and pay in gift cards/crypto/wire","previous_patterns":["\\b(?:pay|paid|payment|payments|salary|send|sent|deposit|transfer|buy|purchase|codes?|top\\s?up|recharge|wire|withdraw\\w*)\\b[^.\\n]{0,40}\\b(?:bitcoin|btc|usdt|usdc|crypto(?:currency)?|gift\\s+cards?|apple\\s+cards?|itunes|zelle|cash\\s?app|venmo|western\\s+union|moneygram)\\b","\\b(?:bitcoin|btc|usdt|usdc|crypto(?:currency)?|gift\\s+cards?|apple\\s+cards?|itunes|zelle|cash\\s?app|venmo|western\\s+union|moneygram)\\b[^.\\n]{0,25}\\b(?:paid|payment|payments|salary|deposit|transfer|codes?)\\b"]}]},{"id":"task_scam","status":"active","severity":"warning","weight":24,"title":"Looks like a 'task' scam","why":"Task scams pay small commissions for fake product-boosting work, then demand deposits to 'unlock' withdrawals. You never get the money back.","phrases":[],"patterns":["\\b(?:boost|increase|improve|raise)\\w*\\s+(?:the\\s+)?(?:product\\s+|app\\s+|merchant\\s+|store\\s+)?(?:ratings?|rankings?|reviews?)\\b","\\b(?:product|order|app)\\s+optimi[sz]ation\\b","\\bcommission\\s+(?:on|per|for)\\s+(?:every|each|all)\\s+(?:set|task|order|product)\\b","\\b(?:top\\s?up|recharge|reload|fund)\\s+(?:your\\s+)?(?:account|balance|wallet)\\b","\\bunlock\\s+(?:your\\s+)?(?:withdrawal|earnings|commissions?|tasks?|bonus)\\b","\\bwithdraw(?:al|als)?\\b[^.\\n]{0,50}\\b(?:top\\s?up|recharge|deposit|unlock|upgrade)\\b","\\b(?:like|rate|review|click)\\s+(?:and\\s+\\w+\\s+)?(?:products?|videos?|ads?|apps?|listings?)\\b[^.\\n]{0,40}\\b(?:earn|paid|commission)\\b"],"guards":[],"min_matches":1,"bonus":3,"added":"2026-09-29","source":"original"},{"id":"off_platform","status":"active","severity":"warning","weight":17,"title":"Pushed onto a messaging app","why":"Moving to an unmonitored app right away avoids platform fraud detection and leaves no record.","phrases":["telegram","whatsapp","google hangouts","signal app","wickr","skype id","add me on","message me at","text me at","dm me on"],"patterns":["\\b(?:provide|send|share)\\s+(?:us\\s+|me\\s+)?your\\s+(?:microsoft\\s+)?teams\\s+(?:contact|id|email|username|handle|details)\\b","\\bteams\\s+for\\s+(?:direct\\s+)?communication\\b","\\b(?:only|exclusively|just)\\s+(?:via|on|through|over)\\s+(?:whatsapp|telegram|signal|text|sms)\\b"],"guards":["negation"],"min_matches":1,"bonus":3,"added":"2026-09-29","source":"original"},{"id":"text_interview","status":"active","severity":"warning","weight":15,"title":"Interview by text only","why":"Scam operations avoid live video because they're using a stolen or invented identity.","phrases":["chat interview","text interview","no video call","interview through telegram","interview via whatsapp","written interview only"],"patterns":["\\binterview\\w*\\b[^.\\n]{0,40}\\b(?:via|on|through|over|by)\\s+(?:whatsapp|telegram|signal|text(?:\\s+message)?|chat|messages?|sms)\\b"],"guards":["negation"],"min_matches":1,"bonus":3,"added":"2026-09-29","source":"original"},{"id":"instant_hire","status":"active","severity":"warning","weight":16,"title":"Hired with no real process","why":"An offer without an interview means nobody is assessing you. The goal is to reach the payment step fast.","phrases":["you have been hired","congratulations you are hired","no interview required","hired on the spot","your resume was selected","begin work today"],"patterns":["\\bno\\s+interview\\b","\\b(?:hired|hire[sd]?|start(?:ing)?|begin)\\b[^.\\n]{0,20}\\bsame[- ]day\\b","\\byou(?:'ve| have)\\s+been\\s+(?:selected|hired|approved|accepted)\\b","\\bdeemed\\s+qualified\\b","\\byour\\s+(?:application|resume)\\s+(?:has\\s+been|was)\\s+(?:processed|selected|approved|shortlisted)\\b"],"guards":["negation"],"min_matches":1,"bonus":3,"added":"2026-09-29","source":"original"},{"id":"unsolicited_contact","status":"active","severity":"warning","weight":14,"title":"They say they found you through a directory or resume list","why":"Scammers mass-mail lists of students and job seekers. A real employer applies to you, or you apply to them.","phrases":[],"patterns":["\\b(?:got|received|obtained|found|pulled|saw)\\s+your\\s+(?:contact|resume|cv|email|details|information)\\b[^.\\n]{0,60}\\b(?:through|from|via|on|in)\\b","\\bselected\\s+from\\s+your\\s+(?:school|university|college|campus)\\s+directory\\b","\\byour\\s+(?:school|university|college)\\s+(?:directory|email\\s+list|listserv)\\b"],"guards":[],"min_matches":1,"bonus":3,"added":"2026-09-29","source":"university scam alerts, 2026-09"},{"id":"student_bait","status":"active","severity":"note","weight":9,"title":"Wording aimed at students","why":"Campus scam alerts repeatedly show this framing: easy money that won't interfere with classes.","phrases":[],"patterns":["\\bwithout affecting your (?:regular\\s+)?(?:activities|studies|academics|classes|schedule)\\b","\\bstudent\\s+(?:empowerment|assistance|support)\\s+program\\b","\\bwork\\s+virtually\\s+as\\b"],"guards":[],"min_matches":1,"bonus":3,"added":"2026-09-29","source":"university scam alerts, 2026-09"},{"id":"pressure","status":"active","severity":"warning","weight":11,"title":"Pressure to decide now","why":"Urgency is there to stop you checking. Real hiring runs on weeks, not hours.","phrases":["limited positions","limited slots","act fast","respond within 24 hours","within the next hour","first come first served","offer expires","urgent hiring","urgently needed"],"patterns":["\\burgently\\s+(?:needs?|required|hiring)\\b","\\bstart\\s+(?:today|now|right away)\\b"],"guards":[],"min_matches":1,"bonus":3,"added":"2026-09-29","source":"original"},{"id":"too_good","status":"active","severity":"warning","weight":13,"title":"High pay for very little","why":"Pay well above market for a role needing no experience is bait, not an opportunity.","phrases":["no experience necessary","no experience required","no skills required","anyone can do this","work only 2 hours","flexible hours high pay","easy money","guaranteed income","earn while you learn"],"patterns":["\\bno\\s+(?:prerequisite\\s+)?(?:training\\s+or\\s+)?(?:work\\s+)?experience(?:\\s+or\\s+(?:skills?|training))?\\s+(?:is\\s+|are\\s+)?(?:necessary|required|needed)\\b","\\bearn\\s+\\$\\s?\\d[\\d,]*(?:\\s*(?:-|to)\\s*\\$?\\s?\\d[\\d,]*)?\\s*(?:daily|a day|per day|every day)\\b"],"guards":[],"min_matches":1,"bonus":3,"added":"2026-09-29","source":"original","history":[{"date":"2026-09-30","change":"also match 'no prerequisite training or experience needed' (missed in the Sept 2026 field test)","previous_pattern":"\\bno\\s+(?:work\\s+)?experience(?:\\s+or\\s+skills?)?\\s+(?:is\\s+|are\\s+)?(?:necessary|required|needed)\\b"}]},{"id":"pay_to_work","status":"active","severity":"warning","weight":20,"title":"The 'job' requires paying for training first","why":"A real internship or job pays you. If you must buy a course or program to get the role, it is a course sale dressed as a job.","phrases":["enroll here","enroll for the program","enroll in the program"],"patterns":["\\benroll\\w*\\s+(?:for|in)\\s+(?:the|our)\\s+(?:training\\s+)?program\\b"],"guards":["negation"],"min_matches":1,"bonus":3,"added":"2026-09-29","source":"original"},{"id":"training_sale_perks","status":"active","severity":"warning","weight":20,"title":"The perks read like a course being sold","why":"Certificates, mock interviews and branding sessions listed together are how paid 'internship programs' advertise themselves.","phrases":["training certificate","internship certificate","letter of recommendation","mock interview sessions","personal branding sessions","resume building sessions","guaranteed placement"],"patterns":[],"guards":[],"min_matches":2,"bonus":3,"added":"2026-09-29","source":"original"},{"id":"mule_recruitment","status":"active","severity":"warning","weight":22,"title":"Bank account and ID wanted to 'receive payment'","why":"Being asked for a U.S. bank account and SSN to 'receive salary' before you know the job, company, or pay is the money-mule recruitment pattern; your account is used to move stolen funds.","phrases":["bank account for payment","valid u.s. bank account","us bank account for","social security number for employment","part-time recruiter"],"patterns":["\\b(?:valid|active|personal)\\s+(?:u\\.?s\\.?\\s+)?bank\\s+account\\b[^.\\n]{0,30}\\b(?:payment|paid|salary|deposit|receive)\\b","\\b(?:receive|get|accept)\\s+(?:your\\s+)?(?:salary|pay|payments?|payroll)(?:\\s+payments?)?\\s+(?:through|via|by|into|to)\\s+(?:a\\s+|your\\s+)?(?:u\\.?s\\.?\\s+)?(?:personal\\s+)?bank\\b","\\bassist(?:ing)?\\s+(?:\\w+\\s+){0,3}with\\s+(?:its|our|their|the)\\s+recruit(?:ment|ing)\\b","\\brecruit(?:ment|ing)\\s+(?:is\\s+being\\s+)?conducted\\s+on\\s+behalf\\s+of\\b","\\breply\\s+(?:with\\s+)?(?:yes|apply|interested|i'?m interested)\\b","\\bnot\\s+eligible\\s+to\\s+apply\\b"],"guards":[],"min_matches":1,"bonus":3,"added":"2026-09-29","source":"original"},{"id":"vague_employer","status":"active","severity":"note","weight":9,"title":"The employer stays vague","why":"A real posting names the company and a real person. Anonymity here is deliberate.","phrases":["confidential company","our client is seeking","a leading company","reputable company seeking","well known firm","undisclosed company"],"patterns":["\\b(?:confidential|undisclosed)\\s+(?:employer|company|client)\\b"],"guards":[],"min_matches":1,"bonus":3,"added":"2026-09-29","source":"original"},{"id":"preselected_offer","status":"active","severity":"warning","weight":20,"title":"A job offer you never applied for","why":"The message says you've already been 'chosen' or 'selected' or that an offer was 'approved for you', or that they found your CV or email somewhere. Real employers don't hand out offers to people who never applied.","phrases":[],"patterns":["\\b(?:dear|greetings,?|hello,?)\\s+(?:chosen|selected)\\s+(?:applicant|candidate|student)s?\\b","\\b(?:job\\s+)?offer\\s+has\\s+been\\s+approved\\s+for\\s+you\\b","\\byou\\s+have\\s+been\\s+(?:chosen|selected)\\s+(?:through|by|from|for\\s+(?:a|this)\\s+job|to\\s+work)\\b","\\b(?:considered|found)\\s+you\\s+(?:as\\s+)?(?:a\\s+)?suitable\\b","\\bcame\\s+across\\s+your\\s+(?:cv|resume|profile)\\b","\\bfound\\s+your\\s+(?:email|e-mail|contact|number)\\s+(?:on|in|through)\\b","\\byou\\s+are\\s+invited\\s+to\\s+participate\\s+in\\s+a\\s+part[- ]time\\s+job\\b","\\byour\\s+resume\\s+is\\s+very\\s+suitable\\b"],"guards":[],"min_matches":1,"bonus":3,"added":"2026-09-30","source":"field test Sept 2026 (Evan's labeled reasons)"},{"id":"weekly_stipend","status":"active","severity":"warning","weight":18,"title":"A flat weekly amount for part-time work","why":"Scam offers quote a round weekly sum ('$350 weekly', '$550 per week') for a few hours of vague remote work. Real part-time jobs quote an hourly rate. Writing 'every 7 days' instead of 'weekly' doesn't change it.","phrases":[],"patterns":["\\$\\s?\\d{3}(?:[.,]\\d{2})?\\s*(?:\\(?usd\\)?\\s*)?(?:weekly|per\\s+week|a\\s+week|each\\s+week|every\\s+week|every\\s+(?:7|seven)\\s+days|/\\s?(?:week|wk))\\b","\\bweekly\\s+(?:pay|salary|remuneration|allowance|wages?|compensation|stipend)\\s*(?:of|:|is)?\\s*(?:up\\s+to\\s+)?\\$\\s?\\d{3}\\b","\\b(?:earn|make|get\\s+paid)\\s+(?:up\\s+to\\s+)?\\$\\s?\\d{3}(?:\\.\\d\\d)?\\s*(?:\\(?usd\\)?\\s*)?(?:weekly|every\\s+(?:7|seven)\\s+days)\\b"],"guards":[],"min_matches":1,"bonus":3,"added":"2026-09-30","source":"field test Sept 2026 (Evan's labeled reasons)"},{"id":"personal_channel","status":"active","severity":"warning","weight":18,"title":"Moves hiring to a personal phone, email or social account","why":"You're told to text a number, reply from your personal or 'alternative' email instead of your school address, or message someone on Instagram. That keeps the conversation away from your school's spam filters and anyone who could warn you.","phrases":[],"patterns":["\\b(?:alternative|alternate|personal|private|non[- ]?school|non[- ]?edu)\\s+e-?mail(?:\\s+address)?\\b","\\bnot\\s+(?:your|the)\\s+(?:\\.?edu|school|university|student|campus)\\s+e-?mail\\b","\\btext\\s+(?:your|me\\s+your|us\\s+your|them\\s+your)\\s+(?:full\\s+)?name\\b","\\b(?:send|drop)\\s+(?:a\\s+)?text(?:\\s+message)?\\s+to\\b","\\bvia\\s+text\\s+(?:message|at)\\b","\\btext\\s+message\\s+(?:only|for\\s+a\\s+quick)\\b","\\binstagram\\b[^.\\n]{0,40}\\bmessage\\s+only\\b","\\bdrop\\s+your\\s+(?:phone|cell|mobile)\\s+number\\b","\\b(?:send|provide|reply\\s+with)\\b[^.\\n]{0,40}\\bgmail\\b"],"guards":["disclaimer"],"min_matches":1,"bonus":3,"added":"2026-09-30","source":"field test Sept 2026 (Evan's labeled reasons)"},{"id":"any_department","status":"active","severity":"note","weight":10,"title":"Open to anyone in any department","why":"Fake 'research assistant' offers say any student from any department can do the job. Real research jobs name the skills and the lab.","phrases":[],"patterns":["\\b(?:any|all)\\s+(?:academic\\s+)?departments?\\s+(?:of|in)\\s+(?:the|our)\\s+(?:institution|university|school|college)\\b","\\bfrom\\s+any\\s+(?:academic\\s+)?department\\b","\\bstudents?\\s*(?:and|/|\\\\)\\s*staffs?\\b[^.\\n]{0,80}\\b(?:job|position|opportunity|offer|employment)\\b"],"guards":[],"min_matches":1,"bonus":3,"added":"2026-09-30","source":"field test Sept 2026 (Evan's labeled reasons)"},{"id":"student_hardship_bait","status":"active","severity":"note","weight":10,"title":"Promises money without touching your studies","why":"'Won't interfere with your academics', 'help struggling students cover expenses': this pitch targets students who need money and is written to lower your guard.","phrases":[],"patterns":["\\bwithout\\s+(?:affecting|interfering\\s+with)\\s+(?:your|one'?s)\\s+(?:regular\\s+|daily\\s+)?(?:activities|academics?|academic\\s+performance|studies|classes|schedule|leisure)\\b","\\b(?:won'?t|will\\s+not|does\\s+not|doesn'?t)\\s+(?:interfere|affect)\\s+(?:with\\s+)?your\\s+(?:daily\\s+activities|academics|studies|present\\s+employment|study)\\b","\\bhelp\\s+(?:struggling|needy)\\s+students\\b","\\bcover\\s+expenses\\s+incurred\\b","\\bfinancial\\s+support\\s+to\\s+those\\s+who\\b"],"guards":[],"min_matches":1,"bonus":3,"added":"2026-09-30","source":"field test Sept 2026 (Evan's labeled reasons)"},{"id":"reship_home","status":"active","severity":"critical","weight":34,"title":"Receive and re-ship packages from home","why":"The job is taking in parcels at your home and sending them on. That's reshipping stolen goods, and you're the one whose address is on the box.","phrases":[],"patterns":["\\breshipp?(?:ing|er|ers)?\\b","\\b(?:parcels?|packages?|goods|items)\\b[^.\\n]{0,60}\\b(?:delivered|sent|shipped|mailed)\\s+to\\s+your\\s+(?:home|house|address|residence|apartment)\\b","\\bprepares?\\s+goods\\s+for\\s+forwarding\\b","\\baccept(?:ing)?\\s+and\\s+send(?:ing)?\\s+(?:mail|parcels?|packages?)\\b","\\b(?:outgoing|return)\\s+shipping\\s+labels?\\s+to\\s+print\\b","\\btake\\s+(?:pictures|photos)\\s+of\\s+(?:it|the\\s+parcels?|the\\s+packages?|each\\s+(?:parcel|package))\\b"],"guards":[],"min_matches":1,"bonus":3,"added":"2026-09-30","source":"field test Sept 2026 (Evan's labeled reasons)"},{"id":"fake_check_funds","status":"active","severity":"critical","weight":34,"title":"They'll send you money to buy things","why":"You're promised a check or 'funds' to buy equipment, supplies or gifts, or you'll be 'paid in advance' for purchases. The check bounces after you've spent or forwarded the money.","phrases":[],"patterns":["\\b(?:issue|send|mail|give|email)\\w*\\s+you\\s+(?:an?\\s+)?(?:official\\s+)?(?:check|cheque|paycheck)\\b","\\b(?:check|cheque|paycheck)\\s+(?:for|to\\s+cover)\\s+(?:the\\s+)?(?:office\\s+)?(?:supplies|equipment|expenses|purchases?|items)\\b","\\bfunds?\\b[^.\\n]{0,50}\\b(?:for|to\\s+(?:purchase|buy|handle|cover))\\s+(?:the\\s+)?(?:equipment|supplies|shipping|office\\s+items|gifts?|items)\\b","\\bmobile\\s+deposit\\b","\\bpurchase\\s+(?:gifts?|gift\\s+items)\\b","\\bnot\\s+to\\s+use\\s+your\\s+personal\\s+funds\\b","\\bdon'?t\\s+have\\s+to\\s+use\\s+your\\s+personal\\s+funds\\b","\\bpaid\\s+in\\s+advance\\s+for\\s+(?:all\\s+)?(?:tasks\\s+and\\s+)?purchases\\b","\\bsuppliers?\\s+payments?\\b"],"guards":["negation"],"min_matches":1,"bonus":3,"added":"2026-09-30","source":"field test Sept 2026 (Evan's labeled reasons)"},{"id":"app_boost_task","status":"active","severity":"critical","weight":30,"title":"Paid to boost apps, songs or products","why":"'Update app store data', 'increase app downloads', 'raise play counts': this is the task scam. Soon you're asked to deposit money to 'unlock' your earnings.","phrases":[],"patterns":["\\b(?:increase|boost|improve|update|raise)\\w*\\s+(?:the\\s+)?(?:app(?:\\s+store)?\\s+(?:data|views|downloads|rankings?)|app\\s+views|play\\s+counts?|views\\s+and\\s+downloads|streams?\\s+(?:of|for))\\b","\\bplay\\s+counts?\\b","\\bapp\\s+store\\s+data\\b"],"guards":[],"min_matches":1,"bonus":3,"added":"2026-09-30","source":"field test Sept 2026 (Evan's labeled reasons)"},{"id":"brand_recruiter_text","status":"active","severity":"warning","weight":18,"title":"Cold message 'from' a big brand's HR","why":"A text opening 'sorry to interrupt, I'm from Indeed/TikTok HR' with a daily pay range is the standard opener for task scams. Those companies don't recruit that way.","phrases":[],"patterns":["\\b(?:i'?m|i\\s+am|this\\s+is)\\s+(?:a\\s+)?(?:recruit\\w*\\s+assistant\\s+at|from\\s+the\\s+hr\\s+department|from\\s+(?:indeed|linkedin|tiktok|amazon|ziprecruiter|glassdoor|temu|shein))\\b","\\bsorry\\s+to\\s+(?:interrupt|bother\\s+you)\\b","\\bexcuse\\s+me,?\\s+i'?m\\s+(?:a|from)\\b","\\bpart[- ]time\\s+partners\\b","\\bdaily\\s+salary\\s+(?:is\\s+)?(?:from\\s+)?\\$\\s?\\d"],"guards":[],"min_matches":1,"bonus":3,"added":"2026-09-30","source":"field test Sept 2026 (Evan's labeled reasons)"},{"id":"pet_sitter_relative","status":"active","severity":"warning","weight":20,"title":"A relative 'moving to the area' needs a pet sitter","why":"An uncle, aunt or friend 'moving to the college area' who needs a dog walker at a weekly rate is a fake-check script. The 'owner' is never there and the check arrives first.","phrases":[],"patterns":["\\b(?:uncle|aunt|auntie|cousin|mother|father|mom|dad|brother|sister|relative)\\b[^.\\n]{0,100}\\b(?:moving|relocating)\\b","\\b(?:pet|dog)\\s*[- ]?\\s*(?:sitt?(?:er|ing)|walk(?:er|ing))\\b[^.\\n]{0,160}\\$\\s?\\d{3}\\s*(?:weekly|per\\s+week|a\\s+week)\\b","\\$\\s?\\d{3}\\s*(?:weekly|per\\s+week|a\\s+week)\\b[^.\\n]{0,160}\\b(?:pet|dog)\\s*[- ]?\\s*(?:sitt?(?:er|ing)|walk(?:er|ing))\\b"],"guards":[],"min_matches":1,"bonus":3,"added":"2026-09-30","source":"field test Sept 2026 (Evan's labeled reasons)"},{"id":"crypto_atm","status":"active","severity":"critical","weight":30,"title":"Work involving crypto ATMs","why":"'Evaluate Bitcoin ATMs' jobs are how scammers get you to turn a fake check or stolen money into crypto they control.","phrases":[],"patterns":["\\b(?:bitcoin|btc|crypto(?:currency)?)\\s+atms?\\b"],"guards":[],"min_matches":1,"bonus":3,"added":"2026-09-30","source":"field test Sept 2026 (Evan's labeled reasons)"},{"id":"pii_upfront","status":"active","severity":"warning","weight":18,"title":"Asks for personal details before any interview","why":"A first message asking for your student ID number, date of birth, age or full home address, before any interview, is collecting what it needs for identity theft and to mail a fake check.","phrases":[],"patterns":["\\bstudent\\s+id\\s+(?:number|no\\.?|#)\\b","\\bdate\\s+of\\s+birth\\b","(?:^|\\n)\\s*(?:age|dob)\\s*:","\\bfull\\s+names?\\b[^.\\n]{0,80}\\b(?:mailing|home|physical)\\s+address\\b[^.\\n]{0,80}\\b(?:phone|mobile|cell)\\b"],"guards":["negation","post_hire"],"min_matches":1,"bonus":3,"added":"2026-09-30","source":"field test Sept 2026 (Evan's labeled reasons)"},{"id":"startup_cost","status":"active","severity":"critical","weight":30,"title":"Costs money to start","why":"You're asked to put money in up front ('$8 to get started', 'startup cost') to earn later. Real jobs don't charge you to begin.","phrases":[],"patterns":["\\$\\s?\\d+[^.\\n]{0,25}\\b(?:out\\s+of\\s+pocket|startup\\s+cost|start-?up\\s+(?:cost|fee))\\b","\\b(?:startup|start-?up)\\s+cost\\s+(?:is\\s+)?(?:holding|of|\\$)"],"guards":["negation"],"min_matches":1,"bonus":3,"added":"2026-09-30","source":"field test Sept 2026 (Evan's labeled reasons)"},{"id":"review_fraud","status":"active","severity":"critical","weight":30,"title":"Paid to post fake reviews","why":"Writing 5-star reviews you didn't earn is fraud the FTC fines businesses for, and these gigs often don't pay or turn into task scams.","phrases":[],"patterns":["\\b(?:post(?:ing)?|write|writing|leave|leaving)\\s+(?:\\d+\\s+)?(?:5|five)[- ]star\\s+reviews?\\b","\\$\\s?\\d+\\s+(?:per|for\\s+each|each|a)\\s+review\\b","\\bpaid\\s+(?:to\\s+)?(?:post|write)\\s+reviews?\\b"],"guards":["negation"],"min_matches":1,"bonus":3,"added":"2026-09-30","source":"field test Sept 2026 (Evan's labeled reasons)"},{"id":"income_claim","status":"active","severity":"warning","weight":18,"title":"Promised income that data entry doesn't pay","why":"'$300 a day', '$15,000 a month', 'paychecks are guaranteed' for typing or forms. No real data-entry job pays like that.","phrases":[],"patterns":["\\bpaychecks?\\s+are\\s+guaranteed\\b","\\b(?:make|earn)s?\\s+\\$\\s?\\d{1,3},\\d{3}\\s*/?\\s*(?:mo|month)\\b","\\$\\s?[3-9]\\d{2,}\\+?\\s*(?:/|per\\s+|a\\s+)day\\b","\\bproven\\s+to\\s+generate\\b"],"guards":[],"min_matches":1,"bonus":3,"added":"2026-09-30","source":"field test Sept 2026 (Evan's labeled reasons)"},{"id":"weekly_pay_assistant","status":"active","severity":"warning","weight":35,"title":"An assistant job that leads with being paid weekly","why":"The 'research / personal assistant, part-time, get paid weekly' offer is a common script aimed at students, and scammers drop the dollar amount to slip past filters. Real postings say what the work is and the hourly rate.","phrases":[],"patterns":["\\b(?:research|personal|virtual|administrative|office|executive)\\s+assistants?\\b[^.\\n]{0,200}?\\b(?:get|be|are|is|being)\\s+paid\\b[^.\\n]{0,40}?\\b(?:weekly|per\\s+week|every\\s+week|each\\s+week|every\\s+(?:7|seven)\\s+days)\\b","\\b(?:get|be)\\s+paid\\b[^.\\n]{0,40}?\\b(?:weekly|per\\s+week|every\\s+week|each\\s+week|every\\s+(?:7|seven)\\s+days)\\b[^.\\n]{0,200}?\\b(?:research|personal|virtual|administrative|office|executive)\\s+assistants?\\b","\\b(?:research|personal|virtual|administrative|office|executive)\\s+assistants?\\b[\\s\\S]{0,300}?\\b(?:compensation|pay|salary|stipend|wages?)\\s*:\\s*[a-z ]{0,30}\\b(?:weekly|per\\s+week|every\\s+week|each\\s+week|every\\s+(?:7|seven)\\s+days)\\b"],"guards":[],"min_matches":1,"bonus":3,"added":"2026-09-30","source":"red team: dollar amounts removed"}]};</script>
 <script>
-const SEV_LABEL = { critical: "Serious", warning: "Warning", note: "Note" };
+/* Job-scam detector: browser port of the Python rules engine (rules + scorer + lead-gen + message checks). */
+(function (root) {
+  "use strict";
+  const RULEPACK = root.NCS_RULEPACK;
 
-// --- Flag toggle buttons ---
-document.querySelectorAll(".flag-btn").forEach(btn => {
-  btn.addEventListener("click", () => btn.classList.toggle("active"));
-});
+  // ---------------- helpers ----------------
+  const reEsc = s => s.replace(/[.*+?^${}()|[\]\\\/\-#&~]/g, "\\$&");
+  function allMatches(rx, text) {
+    const out = []; rx.lastIndex = 0; let m;
+    while ((m = rx.exec(text)) !== null) { out.push(m); if (m[0] === "") rx.lastIndex++; }
+    return out;
+  }
+  const fmt0 = n => Math.round(n).toLocaleString("en-US");
+  const fmtG = n => String(Number(n.toPrecision(6)));
+  const title = s => s.replace(/\b[a-z]/g, c => c.toUpperCase());
 
-function getActiveFlags() {
-  return [...document.querySelectorAll(".flag-btn.active")].map(b => b.dataset.flag);
-}
-
-// --- Scoring engine (runs entirely in-browser, same logic as the Python scorer) ---
-
-const SIGNALS = [
-  { id:"advance_fee", sev:"critical", w:30, title:"You're asked to pay something",
-    why:"Legitimate employers never charge you to start work.",
-    p:["training fee","registration fee","application fee","processing fee","onboarding fee","background check fee","starter kit","pay for your own equipment","purchase the equipment","buy the software","refundable deposit","security deposit","administrative fee","certification fee","check to purchase","check for equipment","check to buy","funds to purchase","money for equipment"]},
-  { id:"money_mule", sev:"critical", w:34, title:"The job involves moving money or packages",
-    why:"Depositing checks and forwarding funds, or reshipping parcels, is how stolen money gets laundered.",
-    p:["deposit the check","cash the check","cashier's check","cashiers check","forward the funds","transfer the remaining","wire the balance","process payments on behalf","receive packages","reship","package forwarding","mystery shopper","secret shopper","money transfer agent"]},
-  { id:"banking_pii", sev:"critical", w:26, title:"Banking or identity details wanted up front",
-    why:"Account and identity details come after a signed offer, through payroll — never over chat.",
-    p:["routing number","bank account number","voided check","social security number","your ssn","driver's license number","drivers license number","copy of your id","photo of your id","direct deposit form"]},
-  { id:"irreversible_pay", sev:"critical", w:24, title:"Payment through irreversible channels",
-    why:"Gift cards, crypto, and peer-to-peer apps can't be reversed. No payroll uses them.",
-    p:["bitcoin","btc wallet","usdt","crypto wallet","cryptocurrency","gift card","gift cards","zelle","cash app","cashapp","venmo","western union","moneygram"]},
-  { id:"mule_recruitment", sev:"warning", w:22, title:"Bank account and ID wanted to 'receive payment'",
-    why:"Being asked for a U.S. bank account and SSN to 'receive salary' before you know the job is the money-mule pattern.",
-    p:["bank account for payment","receive salary payments","salary payments through a u.s. bank","valid u.s. bank account","ssn for employment","for employment eligibility","assisting with its recruitment","on behalf of our partner company","not eligible to apply","reply yes or apply","reply i'm interested","part-time recruiter"]},
-  { id:"pay_to_work", sev:"warning", w:20, title:"The 'job' requires paying for training first",
-    why:"If you must buy a course to get the role, it's a course sale dressed as a job.",
-    p:["training with a fee","training fee","enroll in the program","enroll for the program","enroll here","program fee","internship certificate","letter of recommendation","personal branding session","resume building session"]},
-  { id:"off_platform", sev:"warning", w:17, title:"Pushed onto a messaging app",
-    why:"Moving to an unmonitored app avoids fraud detection and leaves no record.",
-    p:["telegram","whatsapp","google hangouts","signal app","wickr","skype id","add me on","message me at","text me at","dm me on","microsoft teams","teams contact","provide your teams","teams for direct communication"]},
-  { id:"instant_hire", sev:"warning", w:16, title:"Hired with no real process",
-    why:"An offer without an interview means nobody is assessing you.",
-    p:["you have been hired","congratulations you are hired","no interview required","immediate hire","hired on the spot","your resume was selected","we found your resume","start immediately","begin work today"]},
-  { id:"personal_email", sev:"warning", w:18, title:"Recruiter writing from a personal address",
-    why:"Corporate hiring comes from the company's own domain.",
-    p:[]},
-  { id:"text_interview", sev:"warning", w:15, title:"Interview by text only",
-    why:"Scam operations avoid live video because they're using a stolen identity.",
-    p:["chat interview","text interview","no video call","interview through telegram","interview via whatsapp","written interview only"]},
-  { id:"too_good", sev:"warning", w:13, title:"High pay for very little",
-    why:"Pay well above market for no experience is bait.",
-    p:["no experience necessary","no experience required","no skills required","anyone can do this","work only 2 hours","flexible hours high pay","easy money","guaranteed income","earn while you learn"]},
-  { id:"pressure", sev:"warning", w:11, title:"Pressure to decide now",
-    why:"Urgency is there to stop you checking.",
-    p:["limited positions","limited slots","act fast","respond within 24 hours","within the next hour","first come first served","offer expires","urgent hiring","urgently needed"]},
-  { id:"vague_employer", sev:"note", w:9, title:"The employer stays vague",
-    why:"A real posting names the company and a real person.",
-    p:["confidential company","our client is seeking","a leading company","reputable company seeking","well known firm","undisclosed company"]},
-];
-
-const FREE_MAIL = new Set(["gmail.com","yahoo.com","outlook.com","hotmail.com","aol.com","protonmail.com","proton.me","mail.com","yandex.com","gmx.com","icloud.com","live.com","msn.com"]);
-
-const CONTEXT_FLAGS = {
-  very_low_connections: { sev:"warning", w:18, title:"Very few connections (<10)", why:"A real professional has dozens from school and past jobs. Single digits means the account was just created." },
-  low_connections: { sev:"note", w:8, title:"Low connections (<50)", why:"Not damning alone, but reduces the trust you'd give a recruiter." },
-  no_profile_photo: { sev:"warning", w:12, title:"No profile photo", why:"Legitimate recruiters almost always have a headshot." },
-  stock_photo_face: { sev:"warning", w:14, title:"Photo looks fake or AI-generated", why:"Scam operations use generated faces to create accounts in bulk." },
-  thin_profile: { sev:"warning", w:11, title:"Profile barely filled out", why:"A real recruiter's livelihood depends on their profile." },
-  no_activity_history: { sev:"note", w:9, title:"No posts or activity", why:"Real professionals accumulate some trail over time." },
-  recruiter_new_account: { sev:"warning", w:14, title:"Account seems brand new", why:"Fresh accounts are spun up in bulk for these operations." },
-  duplicate_accounts: { sev:"warning", w:16, title:"Multiple accounts, same operation", why:"Coordinated account clusters are a hallmark of scam operations." },
-  same_script_seen_before: { sev:"warning", w:18, title:"Identical script from other people", why:"A shared copy-paste script across different accounts is a coordinated operation." },
-  no_company_page: { sev:"warning", w:12, title:"No real company page", why:"Real employers have an established presence." },
-  no_company_insights: { sev:"warning", w:13, title:"No company data on LinkedIn", why:"Fewer than 30 profiles means LinkedIn can't even show hiring trends." },
-  company_insights_present: { sev:"note", w:-5, title:"Full company insights shown", why:"Real company data is hard to fake — a positive signal." },
-  dodged_verification: { sev:"warning", w:16, title:"Dodged when asked to verify", why:"Real recruiters can verify themselves." },
-  name_company_mismatch: { sev:"warning", w:13, title:"Name doesn't match company", why:"Common when one operation runs many fake accounts." },
-  poster_distant_connection: { sev:"note", w:8, title:"Poster is 3rd+ / no connection", why:"Scam recruiters mass-contact strangers." },
-};
-
-const TRACKING_PARAMS = new Set(["utm_source","utm_medium","utm_campaign","utm_term","utm_category","cpc","affiliate","extra_id_consumer_run"]);
-const REDIRECT_MARKERS = ["/away/","/out/","/click/","/redirect/"];
-const SIGNUP_MARKERS = ["/register","/signup","/sign-up","/apply-with-ai","/start_google_auth"];
-
-function escRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&").replace(/\s+/g,"\\s+"); }
-
-function scorePosting(text, company, urlStr, flags) {
-  const findings = [];
-
-  // Text signals
-  SIGNALS.forEach(sig => {
-    if (!sig.p.length) return;
-    const matched = sig.p.filter(p => new RegExp("\\b" + escRe(p) + "\\b","i").test(text));
-    if (matched.length) findings.push({ sev:sig.sev, w:sig.w, title:sig.title, why:sig.why, matched:matched.slice(0,4), id:sig.id });
-  });
-
-  // Free-mail check
-  const emails = (text.match(/[\w.+-]+@[\w-]+\.[\w.-]+/g)||[]).map(e=>e.toLowerCase());
-  const domains = [...new Set(emails.map(e=>e.split("@")[1].replace(/[.,;:]+$/,"")))];
-  const free = domains.filter(d=>FREE_MAIL.has(d));
-  if (free.length && company.trim()) {
-    findings.push({ sev:"warning", w:18, title:"Recruiter writing from a personal address",
-      why:"Corporate hiring comes from the company's own domain. Nothing here comes from a " + company.trim() + " address.",
-      matched:free.map(d=>"@"+d), id:"personal_email" });
+  // ---------------- normalization (rules.py) ----------------
+  const ZERO_WIDTH = /[​‌‍⁠﻿­]/g;
+  const HOMO = {"а":"a","е":"e","о":"o","р":"p","с":"c","у":"y","х":"x","і":"i","ѕ":"s","ο":"o","α":"a","ρ":"p","’":"'","‘":"'","“":'"',"”":'"'};
+  const HOMO_RX = new RegExp("[" + Object.keys(HOMO).join("") + "]", "g");
+  const SPACED = /(?<![a-z0-9])(?:[a-z][ .\-_*]){4,}[a-z](?![a-z0-9])/gi;
+  const LEET = /(?<=[a-z])[@$0134](?=[a-z])/gi;
+  const LEET_MAP = {"@":"a","$":"s","0":"o","1":"i","3":"e","4":"a"};
+  const MAX_TEXT = 20000;
+  function normalize(text) {
+    text = (text || "").normalize("NFKC").replace(ZERO_WIDTH, "").replace(HOMO_RX, c => HOMO[c]);
+    text = text.replace(SPACED, m => m.replace(/[ .\-_*]/g, ""));
+    text = text.replace(LEET, m => LEET_MAP[m]);
+    return text.slice(0, MAX_TEXT);
   }
 
-  // Money-mule combo
-  const ids = new Set(findings.map(f=>f.id));
-  if (["banking_pii","mule_recruitment","off_platform"].filter(x=>ids.has(x)).length >= 2) {
-    findings.push({ sev:"critical", w:28, title:"Combined: recruitment + banking/ID + off-platform",
-      why:"This message combines a recruitment pitch, banking/ID request, and an outside app. Together these are the money-mule scam.",
-      matched:["multiple money-mule signals"], id:"mule_combo" });
+  // ---------------- guards ----------------
+  const NEGATORS = /\b(?:no|never|not|without|zero|nor|neither|free of|isn't|aren't|doesn't|won't|don't|do not|does not|will not|cannot|can't)\b/gi;
+  const REQUIRE = /\b(?:must|need to|needs to|have to|required to|you will pay|you pay)\b/i;
+  const AFTER = /\b(?:at no (?:cost|charge)|no cost|free of charge|for free|is free|are free|free to you|covered by|paid for by|paid by|we (?:pay|cover)|is waived|are waived)\b/i;
+  const POST_HIRE = /\b(?:upon\s+(?:hire|being hired|acceptance|offer)|after\s+(?:you(?:'re| are)\s+|being\s+|an?\s+|your\s+|the\s+)?(?:hired|hire|offer|accepted|acceptance|background check|first)|once\s+(?:you(?:'re| are)\s+)?(?:hired|accepted)|once\s+your\s+background|for\s+(?:payroll|i-?9|tax|w-?4)|i-?9|w-?4|new hires?)\b/i;
+  const SENT_BREAK = /[.;:!?\n]/;
+  function sentenceBefore(text, start) {
+    const parts = text.slice(Math.max(0, start - 160), start).split(SENT_BREAK);
+    return parts[parts.length - 1];
+  }
+  function sentenceAfter(text, end) {
+    const seg = text.slice(end, end + 120); const m = SENT_BREAK.exec(seg);
+    return m ? seg.slice(0, m.index) : seg;
+  }
+  function negated(text, m) {
+    const before = sentenceBefore(text, m.index).split(/\s+/).filter(Boolean).slice(-14).join(" ");
+    let neg = null; for (const n of allMatches(NEGATORS, before)) neg = n;
+    if (neg && !REQUIRE.test(before.slice(neg.index + neg[0].length))) return true;
+    return AFTER.test(sentenceAfter(text, m.index + m[0].length));
+  }
+  function postHire(text, m) {
+    return POST_HIRE.test(text.slice(Math.max(0, m.index - 120), m.index + m[0].length + 120));
+  }
+  const DISCLAIMER = /\b(?:at\s+no\s+time|will\s+never|would\s+never|we\s+never|never\s+(?:ask|request|contact|move)|will\s+not\s+ever|won't\s+ever)\b/i;
+  const disclaimer = (text, m) => DISCLAIMER.test(sentenceBefore(text, m.index));
+  const GUARDS = {negation: negated, post_hire: postHire, disclaimer};
+
+  // ---------------- rulepack ----------------
+  const RULES = RULEPACK.rules.filter(r => (r.status || "active") === "active").map(r => ({
+    id: r.id, severity: r.severity, weight: r.weight, title: r.title, why: r.why,
+    guards: r.guards || [], min: Math.max(1, r.min_matches || 1), bonus: r.bonus == null ? 3 : r.bonus,
+    rx: (r.phrases || []).map(p => new RegExp("\\b" + reEsc(p.toLowerCase()).replace(/ /g, "\\s+") + "\\b", "gi"))
+      .concat((r.patterns || []).map(p => new RegExp(p, "gi"))),
+  }));
+
+  function runTextRules(text) {
+    text = normalize(text);
+    const out = [];
+    for (const rule of RULES) {
+      const seen = new Map();
+      for (const rx of rule.rx) for (const m of allMatches(rx, text)) {
+        if (rule.guards.some(g => GUARDS[g](text, m))) continue;
+        const key = m[0].toLowerCase().replace(/\s+/g, " ").trim();
+        if (!seen.has(key)) seen.set(key, key);
+      }
+      if (seen.size >= rule.min) {
+        const weight = rule.weight + Math.min(2 * rule.bonus, rule.bonus * (seen.size - 1));
+        const shown = [...seen.keys()].sort().slice(0, 5).map(s => s.slice(0, 90));
+        out.push(F(rule.id, rule.severity, weight, rule.title, rule.why, shown));
+      }
+    }
+    return out;
+  }
+  function F(rule_id, severity, weight, title, why, matched) { return {rule_id, severity, weight, title, why, matched: matched || []}; }
+
+  // ---------------- implied hourly pay ----------------
+  const PAY = /\$\s?([\d,]+(?:\.\d+)?)\s*(?:(?:per|a|each|\/)\s*)?(week|weekly|day|daily)\b/i;
+  const HOURS_DAYS = /(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)\s*hrs?\.?\s*(\d+)\s*days?\s*(?:a|per)\s*week/i;
+  const HOURS = /(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)\s*(?:hrs?|hours?)\s*(?:(?:per|a|\/|each)\s*)?(week|weekly|day|daily)?/i;
+  function impliedHourly(text) {
+    text = normalize(text);
+    const pay = PAY.exec(text); if (!pay) return null;
+    const amount = parseFloat(pay[1].replace(/,/g, ""));
+    const perWeek = amount * (pay[2].toLowerCase().startsWith("d") ? 5 : 1);
+    let hours = null, m = HOURS_DAYS.exec(text);
+    if (m) hours = parseFloat(m[2]) * parseFloat(m[3]);
+    else { m = HOURS.exec(text); if (m) hours = parseFloat(m[2]) * ((m[3] || "").toLowerCase().startsWith("d") ? 5 : 1); }
+    if (!hours || hours <= 0) return null;
+    const rate = perWeek / hours; if (rate < 60) return null;
+    const p = pay[0].trim();
+    return F("implied_hourly", "warning", 18, "The pay works out to far above market",
+      `${p} for at most about ${fmtG(hours)} hours a week is roughly $${fmt0(rate)}/hour. Real employers do not pay this for casual, no-experience work.`,
+      [`${p} / about ${fmtG(hours)} hrs per week`]);
   }
 
-  // URL signals
-  if (urlStr.trim()) {
-    const urls = urlStr.split("->").map(u=>u.trim()).filter(Boolean);
-    urls.forEach(u => {
-      try {
-        const parsed = new URL(u);
-        const path = parsed.pathname.toLowerCase();
-        const params = new Set([...parsed.searchParams.keys()].map(k=>k.toLowerCase()));
-        if (REDIRECT_MARKERS.some(m=>path.includes(m)))
-          findings.push({ sev:"note", w:6, title:"Apply link passes through a redirect hop", why:"A redirect before the real listing means you're not going straight to the employer.", matched:[parsed.hostname], id:"url_redirect" });
-        const tracked = [...params].filter(p=>TRACKING_PARAMS.has(p));
-        if (tracked.length)
-          findings.push({ sev:"note", w:5, title:"Apply link carries tracking parameters", why:"UTM and similar tags mean this link is part of a marketing campaign.", matched:tracked, id:"url_tracking" });
-        if (params.has("cpc"))
-          findings.push({ sev:"warning", w:14, title:"Apply link is paid-per-click traffic", why:"Someone gets paid each time this is clicked — that's an ad, not a job posting.", matched:["cpc parameter"], id:"url_cpc" });
-        if (SIGNUP_MARKERS.some(m=>path.includes(m)))
-          findings.push({ sev:"warning", w:15, title:"Forced signup before seeing the listing", why:"Legitimate job boards let you see the posting before making you create an account.", matched:[parsed.hostname+path], id:"url_signup" });
-      } catch(e) {}
-    });
+  // ---------------- compensation vs national medians ----------------
+  const BLS = {
+    data_entry: ["Data Entry Keyers", 37790, ["data entry", "data-entry", "data processor", "typing", "keyer"]],
+    admin_assistant: ["Secretaries & Administrative Assistants", 46010, ["administrative assistant", "admin assistant", "secretary", "office assistant", "administrative support", "clerical"]],
+    customer_service: ["Customer Service Representatives", 39680, ["customer service", "customer support", "call center", "customer care", "support representative"]],
+    shipping_receiving: ["Shipping, Receiving & Inventory Clerks", 40260, ["shipping", "receiving", "warehouse clerk", "package handler", "reshipping", "shipping coordinator", "logistics coordinator"]],
+    personal_assistant: ["Personal & Executive Assistants", 46010, ["personal assistant", "executive assistant", "virtual assistant"]],
+    bookkeeper: ["Bookkeeping & Accounting Clerks", 47440, ["bookkeeper", "bookkeeping", "accounting clerk", "accounts payable", "accounts receivable", "payment processor", "payment processing"]],
+    receptionist: ["Receptionists", 35840, ["receptionist", "front desk"]],
+    general_office: ["General Office Clerks", 40480, ["office clerk", "general office", "remote assistant", "work from home assistant", "remote worker"]],
+    sales_rep: ["Sales Representatives (non-technical)", 63230, ["sales representative", "sales rep", "account executive", "inside sales"]],
+    software_dev: ["Software Developers", 132270, ["software engineer", "software developer", "developer", "programmer", "full stack", "backend engineer", "frontend engineer"]],
+    data_analyst: ["Data / Operations Analysts", 83640, ["data analyst", "business analyst", "operations analyst"]],
+  };
+  const PAYPAT = /\$\s?([\d,]+(?:\.\d+)?)\s*(?:-|–|to|\+)?\s*(?:\$?\s?([\d,]+(?:\.\d+)?))?\s*(?:\/|per|an?\s)?\s*(hour|hr|day|week|month|year|annum|yr)/gi;
+  function compensation(ttl, desc) {
+    const text = `${ttl}\n${desc}`; const pays = [];
+    for (const m of allMatches(PAYPAT, text)) {
+      const hi = parseFloat((m[2] || m[1]).replace(/,/g, "")); const u = m[3].toLowerCase();
+      pays.push(u === "hour" || u === "hr" ? hi * 2080 : u === "day" ? hi * 260 : u === "week" ? hi * 52 : u === "month" ? hi * 12 : hi);
+    }
+    if (!pays.length) return null;
+    const adv = Math.max(...pays); const hay = `${ttl} ${desc}`.toLowerCase();
+    let best = null, bestLen = 0;
+    for (const k in BLS) for (const kw of BLS[k][2]) if (hay.includes(kw) && kw.length > bestLen) { best = BLS[k]; bestLen = kw.length; }
+    if (!best) return null;
+    const ratio = adv / best[1];
+    if (ratio < 1.8) return null;
+    const detail = `advertised ~$${fmt0(adv)}/yr is ${ratio.toFixed(1)}x the national median of $${fmt0(best[1])} for ${best[0]}`;
+    return F("pay_anomaly", "warning", 17, "The stated pay is out of band", detail + ". Figures far above market for the described work are the hook.", [detail]);
   }
 
-  // Context flags
-  flags.forEach(f => {
-    const spec = CONTEXT_FLAGS[f];
-    if (spec) findings.push({ sev:spec.sev, w:spec.w, title:spec.title, why:spec.why, matched:["you observed this"], id:"ctx_"+f });
-  });
-
-  // Sort and score
-  const order = { critical:0, warning:1, note:2 };
-  findings.sort((a,b) => order[a.sev]-order[b.sev] || b.w-a.w);
-  const score = Math.min(100, Math.max(0, findings.reduce((s,f)=>s+f.w, 0)));
-  const hasCrit = findings.some(f=>f.sev==="critical");
-  let band, verdict;
-  if (hasCrit || score >= 65) { band="block"; verdict="Treat this as a scam. Don't send money, documents, or banking details."; }
-  else if (score >= 35) { band="review"; verdict="Several things don't add up. Verify the employer independently before replying."; }
-  else if (score >= 15) { band="caution"; verdict="A few things are worth checking. Confirm the company and role exist."; }
-  else { band="clear"; verdict="Nothing here matched a known pattern. Still verify the employer through their own site."; }
-  return { score, band, verdict, findings };
-}
-
-// --- UI wiring ---
-
-const $ = id => document.getElementById(id);
-let lastText = "";
-
-$("check").addEventListener("click", () => {
-  const text = $("text").value.trim();
-  if (!text) { $("status").textContent = "Paste the posting text first."; $("status").className = "status-msg err"; return; }
-  lastText = text;
-  $("status").textContent = ""; $("status").className = "status-msg";
-
-  const r = scorePosting(text, $("company").value, $("url").value, getActiveFlags());
-
-  $("score").textContent = r.score;
-  $("verdict").textContent = r.verdict;
-  const card = $("verdictCard");
-  card.className = "verdict-card " + r.band;
-
-  if (!r.findings.length) {
-    $("findingsList").innerHTML = '<li class="clear-msg">No known patterns matched. That isn\'t a clearance — the most common scams that slip past checks look entirely ordinary until the payment request arrives later.</li>';
-  } else {
-    $("findingsList").innerHTML = r.findings.map(f =>
-      '<li class="finding-item"><div class="finding-header"><span class="sev-tag ' + f.sev + '">' + SEV_LABEL[f.sev] + '</span><span class="finding-title">' + esc(f.title) + '</span></div><p class="finding-why">' + esc(f.why) + '</p>' +
-      (f.matched && f.matched.length ? '<p class="finding-matched">Found: ' + f.matched.map(esc).join(" · ") + '</p>' : '') +
-      '</li>'
-    ).join("");
+  // The same check as a status for the security report's Pay tile (scam_detector/enrichment/compensation.py's result):
+  // {status: no_pay_found | title_unmapped | within_range | flagged, ratio_to_median}.
+  function compensationInfo(ttl, desc) {
+    const text = `${ttl}\n${desc}`; const pays = [];
+    for (const m of allMatches(PAYPAT, text)) {
+      const hi = parseFloat((m[2] || m[1]).replace(/,/g, "")); const u = m[3].toLowerCase();
+      pays.push(u === "hour" || u === "hr" ? hi * 2080 : u === "day" ? hi * 260 : u === "week" ? hi * 52 : u === "month" ? hi * 12 : hi);
+    }
+    if (!pays.length) return {status: "no_pay_found", ratio_to_median: null};
+    const adv = Math.max(...pays); const hay = `${ttl} ${desc}`.toLowerCase();
+    let best = null, bestLen = 0;
+    for (const k in BLS) for (const kw of BLS[k][2]) if (hay.includes(kw) && kw.length > bestLen) { best = BLS[k]; bestLen = kw.length; }
+    if (!best) return {status: "title_unmapped", ratio_to_median: null};
+    const ratio = Math.round(adv / best[1] * 100) / 100;
+    return {status: ratio >= 1.8 ? "flagged" : "within_range", ratio_to_median: ratio};
   }
 
-  $("results").classList.add("show");
-  $("aiPass").disabled = false;
-  $("results").scrollIntoView({ behavior:"smooth", block:"start" });
-});
+  // ---------------- email domains ----------------
+  const FREE_MAIL = new Set(["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "aol.com", "protonmail.com", "proton.me", "mail.com", "yandex.com", "gmx.com", "icloud.com", "live.com", "msn.com"]);
+  function emailDomains(text, company) {
+    const ds = new Set((text.match(/[\w.+-]+@[\w-]+\.[\w.-]+/gi) || []).map(e => e.split("@")[1].toLowerCase().replace(/[.,;:]+$/, "")));
+    const free = [...ds].filter(d => FREE_MAIL.has(d)).sort();
+    if (free.length && company.trim())
+      return [F("personal_email", "warning", 18, "Recruiter writing from a personal address",
+        `Corporate hiring comes from the company's own domain. Nothing here comes from a ${company.trim()} address.`, free.map(d => "@" + d))];
+    return [];
+  }
 
-$("aiPass").addEventListener("click", async () => {
-  if (!lastText) return;
-  $("aiPass").disabled = true;
-  $("status").textContent = "Reading the wording…"; $("status").className = "status-msg";
-  const prompt = "You analyze job postings and recruiter messages for fraud signals that keyword matching misses: internal inconsistencies, vague duties that don't match the pay, translated or templated phrasing, a company description that doesn't correspond to the work described, or a tone mismatch between the claimed employer and the message.\n\nRespond with JSON only, no markdown fences. Shape: {\"findings\":[{\"severity\":\"critical|warning|note\",\"title\":\"short phrase\",\"why\":\"one or two sentences\"}]}. At most four findings. Empty array if nothing.\n\nPosting:\n" + lastText;
-  try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:1000, messages:[{role:"user",content:prompt}] })
-    });
-    const data = await res.json();
-    const raw = data.content.filter(b=>b.type==="text").map(b=>b.text).join("\n");
-    const parsed = JSON.parse(raw.replace(/```json|```/g,"").trim());
-    const extra = (parsed.findings||[]).filter(f=>f.title&&f.why);
-    if (!extra.length) { $("status").textContent = "The wording itself didn't raise anything beyond what's listed."; return; }
-    $("findingsList").insertAdjacentHTML("beforeend", extra.map(f => {
-      const sev = ["critical","warning","note"].includes(f.severity) ? f.severity : "note";
-      return '<li class="finding-item"><div class="finding-header"><span class="sev-tag ' + sev + '">' + SEV_LABEL[sev] + '</span><span class="finding-title">' + esc(f.title) + '</span></div><p class="finding-why">' + esc(f.why) + '</p></li>';
-    }).join(""));
-    $("status").textContent = extra.length + " finding" + (extra.length>1?"s":"") + " from language analysis (not scored).";
-  } catch(e) {
-    $("status").textContent = "Language pass didn't come back. The findings above still stand.";
-    $("status").className = "status-msg err";
-  } finally { $("aiPass").disabled = false; }
-});
+  // ---------------- apply-link structure ----------------
+  const NEUTRAL = ["linkedin.com", "indeed.com", "glassdoor.com", "ziprecruiter.com", "greenhouse.io", "lever.co", "workday.com", "myworkdayjobs.com", "smartrecruiters.com", "jobs.polymer.co", "polymer.co", "ashbyhq.com", "icims.com", "taleo.net", "bamboohr.com", "careers-page.com"];
+  const TRACKING = new Set(["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_category", "cpc", "affiliate", "extra_id_consumer_run", "extra_prev_uid", "extrlint"]);
+  const URL_SPECS = {
+    redirect_hop: ["note", 6, "The apply link passes through a redirect/tracking hop", "A redirect before the real listing is common for legitimate aggregators too, but it's worth knowing you're not going straight to the employer."],
+    tracking_params: ["note", 5, "The apply link carries campaign tracking parameters", "UTM and similar tags mean this link is part of a marketing/affiliate campaign, not a direct posting from the employer."],
+    paid_click: ["warning", 14, "The apply link is paid-per-click traffic", "A cost-per-click parameter means someone gets paid each time this link is clicked, regardless of whether you're hired -- that's an ad, not a job posting."],
+    signup_wall: ["warning", 15, "An account signup is forced before you can see the listing", "Legitimate job boards let you see the posting before asking you to create an account. A forced signup wall exists to harvest your email and profile."],
+    domain_mismatch: ["warning", 16, "The apply link doesn't lead to the claimed employer", "The application ultimately goes to a domain unrelated to the company the listing named, and it isn't a recognized job platform -- a sign you're dealing with a reposting or aggregator, not the employer directly."],
+  };
+  function splitUrl(url) {
+    const m = /^[a-z][a-z0-9+.\-]*:\/\/([^/?#]*)([^?#]*)(?:\?([^#]*))?/i.exec(url || "");
+    if (!m) return {host: "", path: "", params: new Set()};
+    let host = m[1].toLowerCase(); if (host.startsWith("www.")) host = host.slice(4);
+    const params = new Set((m[3] || "").split(/[&;]/).map(kv => kv.split("=")).filter(kv => kv[0] && kv.length > 1 && kv[1] !== "").map(kv => decodeURIComponent(kv[0]).toLowerCase()));
+    return {host, path: (m[2] || "").toLowerCase(), params};
+  }
+  function urlChain(urls, company) {
+    if (!urls || !urls.length) return [];
+    const hits = {};
+    const add = (k, d) => (hits[k] = hits[k] || []).push(d);
+    for (const url of urls) {
+      const {host, path, params} = splitUrl(url);
+      if (["/away/", "/out/", "/click/", "/redirect/", "/go/"].some(x => path.includes(x))) add("redirect_hop", `${host}${path} is a redirect/tracking hop`);
+      const tracked = [...params].filter(p => TRACKING.has(p)).sort();
+      if (tracked.length) add("tracking_params", `${host} URL carries tracking params: ${tracked.join(", ")}`);
+      if (params.has("cpc") || url.toLowerCase().includes("cpc")) add("paid_click", `${host} URL contains a cost-per-click parameter -- paid traffic arbitrage`);
+      if (["/register", "/signup", "/sign-up", "/apply-with-ai", "/start_google_auth"].some(x => path.includes(x))) add("signup_wall", `${host}${path} forces account creation before showing the listing`);
+    }
+    const fin = splitUrl(urls[urls.length - 1]).host;
+    if (urls.length === 1 && company.trim() && fin && !NEUTRAL.some(p => fin.endsWith(p))) {
+      const ck = company.toLowerCase().replace(/[^a-z]/g, ""), dk = fin.split(".")[0].replace(/[^a-z]/g, "");
+      if (ck.length > 3 && !(dk.includes(ck.slice(0, 6)) || ck.includes(dk.slice(0, 6))))
+        add("domain_mismatch", `Final application domain (${fin}) doesn't match the claimed employer name (${company.trim()}) and isn't a known job platform`);
+    }
+    return Object.keys(hits).map(k => F("url_" + k, URL_SPECS[k][0], URL_SPECS[k][1], URL_SPECS[k][2], URL_SPECS[k][3], hits[k].slice(0, 3)));
+  }
 
-function esc(s) { return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+  // ---------------- lead-generation axis ----------------
+  const URL_POINTS = {url_signup_wall: [4, "The apply link forces an account signup"], url_paid_click: [4, "The apply link is paid-per-click traffic"],
+    url_tracking_params: [2, "The apply link carries campaign tracking parameters"], url_redirect_hop: [2, "The apply link passes through a redirect hop"],
+    url_domain_mismatch: [3, "The apply link doesn't lead to the named employer"]};
+  const LG_TEXT = [
+    [/\b(?:we are|is|are)\s+not\s+the\s+employer(?:\s+of\s+record)?\b|\baggregat(?:or|ed)\b|\bcross-?posted\b/i, 3, "The listing describes itself as an aggregator"],
+    [/\ba\s+(?:remote\s+|growing\s+|leading\s+)?(?:company|firm|organization|business)\s+(?:is\s+)?(?:seeking|looking|hiring)\b|\bour\s+clients?\b|\b(?:confidential|undisclosed)\s+(?:employer|company|client)\b/i, 2, "The employer is described but not named"],
+    [/\bregardless\s+of\s+(?:your\s+)?experience\b/i, 1, "Generic 'regardless of experience' boilerplate"],
+    [/\btaking\s+a\s+(?:minute|moment)\s+to\s+(?:fill\s+out|complete|finish)\s+our\s+(?:online\s+)?application\b/i, 4, "Boilerplate 'start a career, fill out our application' pitch with no real role"],
+    [/\b(?:research|market\s+research|focus\s+group|survey)\s+panel(?:ist)?s?\b|\bpaid\s+(?:focus\s+groups?|surveys?|research\s+studies)\b|\btake\s+(?:paid\s+)?surveys?\b|\bfocus\s+group\s+(?:participants?|studies)\b/i, 4, "A survey or focus-group panel signup dressed up as a job"],
+    [/\byou\s+will\s+receive\s+an\s+email\s+within\b|\bcheck\s+your\s+(?:inbox|email)\s+or\s+spam\b/i, 4, "An automated funnel that emails you right after you apply"],
+    [/\bnot\s+a\s+salaried\s+job\b|\b(?:independent\s+)?(?:business|income)\s+opportunity\b|\bearnings\s+depend\s+on\s+your\b/i, 4, "An income or referral 'opportunity', not a job with an employer"],
+    [/\bcreate\s+(?:your\s+)?(?:a\s+)?free\s+account\b|\bsign\s+up\s+(?:for\s+)?free\b/i, 2, "Asks you to create an account on a third-party site"],
+    [/\bljbffr\b/i, 3, "Carries a scraped job ID from a reposting network"],
+    [/\b(?:recruiting|hiring|sourcing\s+candidates)\s+(?:for|on\s+behalf\s+of)\s+(?:one\s+of\s+)?(?:our|a|an)\s+clients?\b|\babout\s+our\s+client\s*:/i, 6, "A staffing firm or reposter hiring for a client it never names"],
+    [/\b(?:income|performance)[- ]based\s+(?:income|earnings?|earning\s+potential)\b|\bincome[- ]earning\s+potential\b/i, 4, "Pay is 'earning potential' instead of a wage"],
+    [/\bbuild\s+(?:something\s+of\s+your\s+own|an?\s+income\s+from\s+home|your\s+own\s+business)\b|\bbe\s+your\s+own\s+boss\b/i, 2, "Pitched as building your own business, not a job"],
+    [/\bbegin\s+a\s+long[- ]lasting\s+(?:career|profession)\s+with\s+(?:limitless|unlimited)\s+opportunit/i, 3, "Funnel boilerplate: 'begin a long-lasting career with limitless opportunity'"],
+  ];
+  const LG_VERDICT = "This looks like an aggregator or lead-generation listing: the link goes through a middleman, not the employer. It may collect your email and profile. Find the employer's own posting before you apply.";
+  function leadGen(text, urlFindings) {
+    let points = 0; const reasons = [];
+    for (const f of urlFindings) { const s = URL_POINTS[f.rule_id]; if (s) { points += s[0]; reasons.push({source: "link", points: s[0], reason: s[1], matched: f.matched.slice(0, 2)}); } }
+    const norm = normalize(text);
+    for (const [rx, pts, reason] of LG_TEXT) { const m = rx.exec(norm); if (m) { points += pts; reasons.push({source: "text", points: pts, reason, matched: [m[0].slice(0, 80)]}); } }
+    const flag = points >= 6;
+    return {flag, level: points >= 8 ? "likely" : flag ? "possible" : null, points, reasons, verdict: flag ? LG_VERDICT : ""};
+  }
+
+  // ---------------- the scorer ----------------
+  const SEV = {critical: 0, warning: 1, note: 2};
+  const bySeverity = (a, b) => SEV[a.severity] - SEV[b.severity] || b.weight - a.weight;
+  function band(score, critical) { return critical || score >= 65 ? "block" : score >= 35 ? "review" : score >= 15 ? "caution" : "clear"; }
+  function scorePosting(ttl, description, company, urlChainList) {
+    company = company || "";
+    const full = `${ttl}\n${description}`;
+    let findings = runTextRules(full);
+    const h = impliedHourly(full); if (h) findings.push(h);
+    findings = findings.concat(emailDomains(full, company));
+    const c = compensation(ttl, description); if (c) findings.push(c);
+    const fired = new Set(findings.map(f => f.rule_id));
+    if (["banking_pii", "mule_recruitment", "off_platform"].filter(x => fired.has(x)).length >= 2)
+      findings.push(F("mule_combo", "critical", 28, "Combined pattern: recruitment + banking/ID + off-platform",
+        "This message combines a recruitment pitch, a request for banking or identity details, and a push to an outside app. Together these are the money-mule hiring scam - walk away.",
+        ["multiple money-mule signals present together"]));
+    const lead_gen = leadGen(full, urlChain(urlChainList || [], company));
+    findings.sort(bySeverity);
+    const score = Math.min(100, findings.reduce((s, f) => s + f.weight, 0));
+    return {score, band: band(score, findings.some(f => f.severity === "critical")), findings, lead_gen, ruleset: RULEPACK.version};
+  }
+
+  // ---------------- "Is this a scam?" (msgcheck.py) ----------------
+  const LEVELS = [
+    ["ok", "No known scam signs", "Nothing here matches a known scam pattern. That isn't a guarantee: confirm the employer through their own website or the FSU Career Center before sharing personal details."],
+    ["caution", "Be careful", "A few things are off. Verify the sender through an official channel you find yourself before you reply or click anything."],
+    ["warn", "Likely a scam", "Several strong scam signals. Don't reply with personal information, don't click links, and don't send or accept money."],
+    ["bad", "Scam. Stop here.", "This matches patterns that only scams use. Don't respond, don't click links, and never send money, gift cards, or bank details."],
+  ];
+  const BAND_LEVEL = {clear: 0, caution: 1, review: 2, block: 3};
+  const SHORT = new Set(["bit.ly", "tinyurl.com", "t.co", "rb.gy", "cutt.ly", "shorturl.at", "is.gd", "ow.ly", "buff.ly", "tiny.cc", "rebrand.ly", "s.id", "t.ly", "lnkd.in", "shorturl.com", "bl.ink", "short.io"]);
+  const CHAT = new Set(["wa.me", "chat.whatsapp.com", "t.me", "telegram.me", "signal.me", "m.me", "discord.gg"]);
+  const FORMS = new Set(["forms.gle", "docs.google.com", "forms.office.com", "jotform.com", "typeform.com"]);
+  const CLAIMS_SCHOOL = /\b(?:professor|prof\.|dr\.|department|dept\.?|university|career (?:center|services)|fsu|florida state|financial aid|registrar|dean|faculty|student employment)\b/i;
+  const CLAIMS_COMPANY = /\b(?:hr|human resources|recruit(?:er|ing|ment)|talent acquisition|hiring manager|onboarding)\b/i;
+  const URL_RX = /(?:https?:\/\/|www\.)[^\s<>"')\]]+/gi;
+  const EMAIL_RX = /[\w.+-]+@([\w-]+(?:\.[\w-]+)+)/gi;
+  const isFsu = d => { d = d.toLowerCase().replace(/\.$/, ""); return d === "fsu.edu" || d.endsWith(".fsu.edu"); };
+  const looksFsu = d => { d = d.toLowerCase().replace(/\.$/, ""); if (isFsu(d)) return false; const f = d.replace(/[^a-z0-9]/g, ""); return f.includes("fsu") || f.includes("floridastate") || f.includes("seminole"); };
+  function senderFindings(sender, text) {
+    const out = []; sender = (sender || "").trim();
+    const domains = new Set(allMatches(EMAIL_RX, sender + " " + text).map(m => m[1].toLowerCase()));
+    const sm = new RegExp(EMAIL_RX.source, "i").exec(sender); const sd = sm ? sm[1].toLowerCase() : "";
+    for (const d of [...domains].sort()) if (looksFsu(d))
+      out.push(F("fsu_lookalike", "critical", 40, "An address pretends to be FSU", `${d} is not an FSU address. Real FSU email ends in exactly @fsu.edu (or a department subdomain like @cs.fsu.edu). Look-alike domains are a classic phishing move.`, ["@" + d]));
+    if (FREE_MAIL.has(sd)) {
+      const claim = CLAIMS_SCHOOL.exec(text + " " + sender) || CLAIMS_COMPANY.exec(text + " " + sender);
+      if (claim) out.push(F("personal_sender", "warning", 18, "Official-sounding message from a personal account", `It claims to be a ${claim[0].toLowerCase()} but was sent from ${sd}. Universities and real companies write from their own domain.`, ["@" + sd]));
+    }
+    if (sender && /\b(?:fsu|florida state|career center)\b/i.test(sender) && sd && !isFsu(sd))
+      out.push(F("display_spoof", "warning", 20, "The sender name says FSU but the address doesn't", `The name shown mentions FSU, but the address is at ${sd}.`, [sender.slice(0, 80)]));
+    return out;
+  }
+  function linkFindings(text) {
+    const out = [], seen = new Set();
+    for (const m of allMatches(URL_RX, text || "")) {
+      const raw = m[0]; const url = raw.toLowerCase().startsWith("http") ? raw : "http://" + raw;
+      let host = (/^https?:\/\/(?:[^@\/?#]*@)?(\[[^\]]*\]|[^:\/?#]*)/i.exec(url) || [,""])[1].toLowerCase();
+      if (host.startsWith("www.")) host = host.slice(4);
+      if (!host || seen.has(host)) continue; seen.add(host);
+      const ev = [raw.slice(0, 80)];
+      if (SHORT.has(host)) out.push(F("short_link", "warning", 14, "A shortened link hides where it goes", `${host} links hide the real destination. Don't open it; ask for the company's own site instead.`, ev));
+      else if (CHAT.has(host)) out.push(F("chat_link", "warning", 18, "Pushes you to a chat app", "Moving a 'job' to WhatsApp, Telegram or Signal is how scammers avoid the platforms that screen them.", ev));
+      else if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) out.push(F("ip_link", "critical", 34, "A link to a bare IP address", "Real employers don't send links to raw number addresses.", ev));
+      else if (looksFsu(host)) out.push(F("fsu_lookalike_link", "critical", 40, "A link pretends to be FSU", `${host} is not an FSU website. FSU sites end in fsu.edu.`, ev));
+      else if (FORMS.has(host) || host.endsWith(".jotform.com")) out.push(F("form_link", "note", 8, "Asks you to fill in an outside form", "Forms are fine for events, but a 'job' that starts with a form asking for your details is a common data-harvesting step.", ev));
+    }
+    return out;
+  }
+  function check(text, sender) {
+    text = (text || "").trim().slice(0, 8000); sender = (sender || "").trim().slice(0, 200);
+    const r = scorePosting("", text + (sender ? "\n" + sender : ""), "", null);
+    const best = new Map();
+    for (const f of r.findings.concat(senderFindings(sender, text), linkFindings(text)))
+      if (!best.has(f.rule_id) || f.weight > best.get(f.rule_id).weight) best.set(f.rule_id, f);
+    const findings = [...best.values()].sort(bySeverity);
+    const score = Math.min(100, findings.reduce((s, f) => s + f.weight, 0));
+    const b = band(score, findings.some(f => f.severity === "critical"));
+    let level = BAND_LEVEL[b];
+    if (r.lead_gen.flag && level < 1) level = 1;
+    const [key, ttl, advice] = LEVELS[level];
+    return {level, key, title: ttl, advice, score, band: b, findings, lead_gen: r.lead_gen};
+  }
+  root.NCS = {normalize, runTextRules, scorePosting, check, linkFindings, LEVELS, ruleset: RULEPACK.version};
+})(typeof window !== "undefined" ? window : globalThis);
+
 </script>
+<script>
+(function () {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  let mode = "posting";
+
+  const STEPS = [
+    ["Look the company up yourself (not through links in the message) and confirm the job is on their careers page.", "Keep the conversation on the job site or the company's own email.", "Never pay for training, equipment or a background check. Real jobs don't charge you."],
+    ["Don't click links or open attachments yet.", "Find the organization's official contact on your own and ask whether the message is real.", "Don't share your date of birth, SSN, ID or bank details."],
+    ["Don't reply with personal information, and don't click the links.", "Block the sender and report the posting to the site it came from."],
+    ["Stop replying. Don't send money, gift cards, crypto or bank details, and don't deposit any check they send.", "If you already shared banking details or deposited a check, call your bank now.", "Report it at reportfraud.ftc.gov and to the site where you found it."],
+  ];
+  const SAMPLES = {
+    posting: {title: "Remote Personal Assistant", company: "", url: "", text: "We are hiring a part-time personal assistant to work from home. You will be paid $650 weekly for 1-2 hrs a day, 3 days a week. No experience needed, you are hired immediately after a short interview on Telegram. You will receive a check to purchase office equipment from our approved vendor; deposit it and send the balance by Zelle."},
+    message: {sender: "Career Services <careerservices.dept@gmail.com>", text: "Hello Student, the department is recruiting a research assistant. Pay is $400 every 7 days and the job is flexible. Text me on WhatsApp at wa.me/10000000000 with your full name, address and bank name to get started."},
+  };
+
+  function setMode(m) {
+    mode = m;
+    document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.mode === m)));
+    $("posting-fields").hidden = m !== "posting";
+    $("message-fields").hidden = m !== "message";
+    $("text-label").textContent = m === "posting" ? "Posting text" : "Message text";
+  }
+
+  function gauge(score, key) {
+    const r = 54, c = 2 * Math.PI * r, frac = Math.max(0, Math.min(100, score)) / 100;
+    return `<div class="scan"><svg viewBox="0 0 128 128" aria-hidden="true">
+      <circle cx="64" cy="64" r="${r}" fill="none" stroke="#1C2B44" stroke-width="10"/>
+      <circle cx="64" cy="64" r="${r}" fill="none" stroke="var(--c)" stroke-width="10" stroke-linecap="round"
+        stroke-dasharray="${(c * frac).toFixed(1)} ${c.toFixed(1)}"/></svg>
+      <div class="num"><div>${score}<small>RISK</small></div></div></div>`;
+  }
+
+  function finding(f) {
+    const m = (f.matched || []).map(x => `<code>${esc(x)}</code>`).join("");
+    return `<div class="f ${esc(f.severity)}"><div class="t"><span>${esc(f.title)}</span><span class="sev">${esc(f.severity)}</span></div>
+      <p>${esc(f.why)}</p>${m ? `<div>${m}</div>` : ""}</div>`;
+  }
+
+  function run() {
+    const text = $("text").value.trim();
+    if (!text) return;
+    let r;
+    if (mode === "message") {
+      r = NCS.check(text, $("sender").value);
+    } else {
+      const url = $("url").value.trim();
+      const s = NCS.scorePosting($("title").value.trim(), text, $("company").value.trim(), url ? [url] : []);
+      const extra = NCS.linkFindings(text + (url ? "\n" + url : ""));
+      const best = new Map();
+      for (const f of s.findings.concat(extra)) if (!best.has(f.rule_id) || f.weight > best.get(f.rule_id).weight) best.set(f.rule_id, f);
+      const findings = [...best.values()].sort((a, b) => ({critical:0,warning:1,note:2}[a.severity] - {critical:0,warning:1,note:2}[b.severity]) || b.weight - a.weight);
+      const score = Math.min(100, findings.reduce((n, f) => n + f.weight, 0));
+      const crit = findings.some(f => f.severity === "critical");
+      const b = crit || score >= 65 ? "block" : score >= 35 ? "review" : score >= 15 ? "caution" : "clear";
+      let level = {clear: 0, caution: 1, review: 2, block: 3}[b];
+      if (s.lead_gen.flag && level < 1) level = 1;
+      const [key, title, advice] = NCS.LEVELS[level];
+      r = {level, key, title, advice, score, findings, lead_gen: s.lead_gen};
+    }
+    const advice = r.level === 0 ? "Nothing here matches a known scam pattern. That isn't a guarantee: confirm the employer through their own website before sharing personal details." : r.advice;
+    let html = `<div class="card verdict k-${r.key}">${gauge(r.score, r.key)}<div>
+      <div class="lvl">${r.level === 0 ? "No match" : r.findings.length + " signal" + (r.findings.length === 1 ? "" : "s") + " found"}</div>
+      <div class="vt">${esc(r.title)}</div><p class="advice">${esc(advice)}</p></div></div>`;
+    if (r.lead_gen && r.lead_gen.flag) {
+      html += `<h2>Middleman listing</h2><div class="f lg note" style="--fc:var(--amber)"><div class="t"><span>Probably not fraud, but not the employer either</span><span class="sev">${esc(r.lead_gen.level)}</span></div>
+        <p>${esc(r.lead_gen.verdict)}</p><ul>${r.lead_gen.reasons.map(x => `<li>${esc(x.reason)}</li>`).join("")}</ul></div>`;
+    }
+    if (r.findings.length) html += `<h2>What we found</h2>` + r.findings.map(finding).join("");
+    html += `<h2>What to do</h2><ul class="steps">${STEPS[r.level].map(s => `<li>${esc(s)}</li>`).join("")}</ul>`;
+    $("result").innerHTML = html;
+    $("result").scrollIntoView({behavior: "smooth", block: "start"});
+  }
+
+  document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => setMode(t.dataset.mode)));
+  $("text").addEventListener("input", () => { $("go").disabled = !$("text").value.trim(); });
+  $("form").addEventListener("submit", e => { e.preventDefault(); run(); });
+  $("sample").addEventListener("click", () => {
+    const s = SAMPLES[mode];
+    for (const k of ["title", "company", "url", "sender", "text"]) if (k in s) $(k).value = s[k];
+    $("go").disabled = false; run();
+  });
+  $("clear").addEventListener("click", () => {
+    for (const k of ["title", "company", "url", "sender", "text"]) $(k).value = "";
+    $("go").disabled = true; $("result").innerHTML = "";
+  });
+})();
+</script>
+</body>
+</html>
