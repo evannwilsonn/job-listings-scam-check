@@ -22,12 +22,32 @@ characters) before matching. It also skips safe phrasing like "we will never ask
 for a fee" and "SSN for payroll upon hire". Every warning shows the exact words
 that triggered it.
 
+## The Python detector
+
+`scam_detector/` is the full engine the browser page is ported from. It covers
+the rules, the scorer, lead-gen detection, enrichment (domain age, MX records,
+pay vs. BLS medians, link structure), the learned second-look model and an HTTP
+API.
+
+```bash
+pip install -r requirements.txt
+python -m pytest -q tests
+uvicorn scam_detector.api:app --reload
+```
+
+The rules are data, in `scam_detector/rulepack/core.json`. See
+`scam_detector/README.md` for how scoring works and `ADAPTING.md` for adding
+rules.
+
+The labeled evaluation sets are not in this public repo, because they contain
+real people's contact details. So `tools/regress.py`, `tools/evaluate.py` and
+`tools/train_model.py` need your own JSONL files in `scam_detector/data/`. The
+format is in `BUILDING_A_CORPUS.md`.
+
 ## Where the rules come from
 
 The rules and checking code are the same ones the NoleCareerShield job board
 uses. The version shown in the page header is the rulepack it was built from.
-The full detector, with its evaluation sets, the learned model and the review
-loop, lives in the NoleCareerShield repo.
 
 ## Limits
 

@@ -1,0 +1,4 @@
+fastapi>=0.110
+uvicorn>=0.27
+dnspython>=2.6
+pydantic>=2.6
