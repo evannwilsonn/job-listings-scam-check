@@ -1,5 +1,5 @@
 {
- "version": "2026.09.30.2",
+ "version": "2026.10.03.1",
  "rules": [
   {
    "id": "advance_fee",
@@ -811,6 +811,53 @@
    "bonus": 3,
    "added": "2026-09-30",
    "source": "red team: dollar amounts removed"
+  },
+  {
+   "id": "earnings_per_day",
+   "status": "active",
+   "severity": "warning",
+   "weight": 18,
+   "title": "Earnings promised by the day",
+   "why": "'Earn up to ... per day', 'your earnings start at ... a day': work-from-home scams promise a daily take instead of an hourly wage. Real jobs quote an hourly rate or a salary, with or without the dollar amount.",
+   "phrases": [],
+   "patterns": [
+    "\\b(?:earn|earns|earning|earnings|make|makes|making|generate|generates|income|paid)\\b[^.\\n]{0,40}?\\bup\\s+to\\b(?:(?!\\b(?:hours?|hrs?|shifts?|times|days?\\s+a\\s+week)\\b)[^.\\n]){1,30}?\\+?\\s*(?:per\\s+day|a\\s+day|/\\s?day|daily)\\b",
+    "\\b(?:earn|earns|earning|earnings|make|makes|making|generate|generates|income|paid)\\b[^.\\n]{0,25}?\\bbetween\\b(?:(?!\\b(?:hours?|hrs?|shifts?)\\b)[^.\\n]){1,40}?\\b(?:per|a)\\s+day\\b",
+    "\\bearnings\\s+start\\s+at\\b[^.\\n]{1,30}?(?:per\\s+day|a\\s+day|/\\s?day|daily)\\b"
+   ],
+   "guards": [
+    "negation"
+   ],
+   "min_matches": 1,
+   "bonus": 3,
+   "added": "2026-10-03",
+   "source": "red team Oct 2026: data-entry script with the dollar amounts removed"
+  },
+  {
+   "id": "commission_system_pitch",
+   "status": "active",
+   "severity": "warning",
+   "weight": 22,
+   "title": "A sales 'system' you buy into, not a job",
+   "why": "Promoting 'high-ticket digital products' on social media for pay per sale, with a fee kept out of your earnings and 'no followers needed', is an affiliate or MLM funnel. There's no employer paying you a wage.",
+   "phrases": [
+    "high-ticket",
+    "high ticket",
+    "no followers needed",
+    "no followers required",
+    "step-by-step system",
+    "proven training blueprint"
+   ],
+   "patterns": [
+    "\\b(?:earn|make|paid|pay|commission)\\b[^.\\n]{0,40}?\\bper\\s+(?:sale|referral|sign[-\\s]?up)\\b",
+    "\\b(?:retains?|keeps?|takes?)\\s+(?:only\\s+)?(?:a\\s+)?(?:small\\s+)?[^.\\n]{0,25}?\\b(?:website|platform|membership|setup|license)\\s+fee\\b",
+    "\\bpromote\\s+(?:\\w+\\s+){0,3}digital\\s+products?\\b"
+   ],
+   "guards": [],
+   "min_matches": 2,
+   "bonus": 3,
+   "added": "2026-10-03",
+   "source": "red team Oct 2026: MLM 'digital products' script with the dollar amounts removed"
   }
  ]
 }
