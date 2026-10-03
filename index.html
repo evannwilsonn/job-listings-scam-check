@@ -7,7 +7,7 @@
 <meta name="description" content="Paste a job posting or recruiter message and see whether it matches known job-scam patterns. Runs entirely in your browser.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,500..800,0..100,0..1&family=Graduate&family=Martian+Mono:wdth,wght@75..112.5,400..700&family=Plus+Jakarta+Sans:wght@400..700&display=swap" rel="stylesheet">
 <style>
 :root{
   --bg:#050A14;--panel:#08111F;--panel2:#0D1A2E;--line:#1C2B44;--line2:#2A3D5C;
@@ -15,37 +15,38 @@
   --gold:#E2BE6A;--gold-hi:#FBE7AE;--gold-lo:#C99B45;
   --foil:linear-gradient(135deg,#FBE7AE 0%,#E2BE6A 45%,#C99B45 100%);
   --garnet:#8C2F45;--crimson:#E5484D;--amber:#E0A23A;--green:#3FB27F;
-  --mono:'JetBrains Mono',ui-monospace,monospace;
+  --mono:'Martian Mono',ui-monospace,monospace;--sans:'Plus Jakarta Sans',system-ui,sans-serif;
+  --display:'Fraunces',Georgia,serif;--varsity:'Graduate','Rockwell',serif;
 }
 *{box-sizing:border-box;margin:0}
 html{background:var(--bg)}
-body{font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;min-height:100vh;
+body{font-family:var(--sans);font-variation-settings:'wdth' 82;background:var(--bg);color:var(--text);line-height:1.6;min-height:100vh;
   background-image:radial-gradient(1200px 500px at 50% -200px,rgba(226,190,106,.10),transparent 70%)}
 .wrap{max-width:760px;margin:0 auto;padding:40px 16px 80px}
 header{display:flex;align-items:center;gap:12px;margin-bottom:28px}
-.brand{white-space:nowrap;font-family:'Playfair Display',Georgia,serif;font-size:22px;font-weight:700;letter-spacing:.01em}
+.brand{white-space:nowrap;font-family:var(--display);font-variation-settings:'SOFT' 60,'WONK' 1;font-size:22px;font-weight:700;letter-spacing:.01em}
 .brand b{background:var(--foil);-webkit-background-clip:text;background-clip:text;color:transparent}
-.tag{margin-left:auto;font:600 11px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--gold);
+.tag{margin-left:auto;font:400 11px var(--varsity);letter-spacing:.1em;text-transform:uppercase;color:var(--gold);
   border:1px solid rgba(226,190,106,.35);border-radius:999px;padding:4px 10px}
-h1{font-family:'Playfair Display',Georgia,serif;font-size:clamp(30px,6vw,42px);line-height:1.15;margin-bottom:10px}
+h1{font-family:var(--display);font-variation-settings:'SOFT' 60,'WONK' 1;font-size:clamp(30px,6vw,42px);line-height:1.15;margin-bottom:10px}
 .lede{color:var(--soft);max-width:58ch;margin-bottom:28px}
 .card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:14px;padding:20px}
 .tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
-.tab{font:600 13px Inter,sans-serif;color:var(--soft);background:transparent;border:1px solid var(--line2);border-radius:999px;padding:7px 14px;cursor:pointer}
+.tab{font:600 13px var(--sans);color:var(--soft);background:transparent;border:1px solid var(--line2);border-radius:999px;padding:7px 14px;cursor:pointer}
 .tab[aria-selected=true]{color:#0A0F1A;background:var(--foil);border-color:transparent}
 label{display:block;font-weight:600;font-size:14px;margin:14px 0 6px}
 label:first-of-type{margin-top:0}
 .hint{color:var(--dim);font-weight:400;font-size:13px}
 textarea,input{width:100%;background:#050C18;border:1px solid var(--line2);border-radius:8px;color:var(--text);
-  font:14px/1.55 Inter,sans-serif;padding:11px 13px}
+  font:14px/1.55 var(--sans);padding:11px 13px}
 textarea{min-height:180px;resize:vertical}
 textarea:focus,input:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px rgba(226,190,106,.15)}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:560px){.row{grid-template-columns:1fr}}
 .actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
-button.go{background:var(--foil);color:#0A0F1A;border:0;border-radius:8px;padding:12px 22px;font:700 15px Inter,sans-serif;cursor:pointer}
+button.go{background:var(--foil);color:#0A0F1A;border:0;border-radius:8px;padding:12px 22px;font:700 15px var(--sans);cursor:pointer}
 button.go:disabled{opacity:.45;cursor:default}
-button.ghost{background:none;border:1px solid var(--line2);border-radius:8px;color:var(--soft);padding:11px 16px;font:500 14px Inter,sans-serif;cursor:pointer}
+button.ghost{background:none;border:1px solid var(--line2);border-radius:8px;color:var(--soft);padding:11px 16px;font:500 14px var(--sans);cursor:pointer}
 button.ghost:hover{border-color:var(--gold);color:var(--text)}
 .private{margin-top:12px;color:var(--dim);font-size:12.5px}
 
@@ -54,15 +55,15 @@ button.ghost:hover{border-color:var(--gold);color:var(--text)}
 @media(max-width:560px){.verdict{grid-template-columns:1fr;justify-items:start}}
 .scan{position:relative;width:132px;height:132px}
 .scan svg{width:100%;height:100%;transform:rotate(-90deg)}
-.scan .num{position:absolute;inset:0;display:grid;place-items:center;text-align:center;font:700 34px var(--mono)}
+.scan .num{position:absolute;inset:0;display:grid;place-items:center;text-align:center;font:700 30px var(--mono);font-variation-settings:'wdth' 112.5}
 .scan .num small{display:block;font:600 10px var(--mono);letter-spacing:.14em;color:var(--dim);margin-top:-6px}
 .lvl{font:600 11px var(--mono);letter-spacing:.14em;text-transform:uppercase}
-.vt{font-family:'Playfair Display',Georgia,serif;font-size:26px;line-height:1.2;margin:4px 0 6px}
+.vt{font-family:var(--display);font-variation-settings:'SOFT' 60,'WONK' 1;font-size:26px;line-height:1.2;margin:4px 0 6px}
 .advice{color:var(--soft)}
 .k-ok{--c:var(--green)}.k-caution{--c:var(--amber)}.k-warn{--c:#F07A3A}.k-bad{--c:var(--crimson)}
 .lvl,.num{color:var(--c)}
 .verdict.card{border-color:color-mix(in srgb,var(--c) 45%,var(--line))}
-h2{font:600 12px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin:26px 0 10px}
+h2{font:400 12.5px var(--varsity);letter-spacing:.12em;text-transform:uppercase;color:var(--gold);margin:26px 0 10px}
 .f{border:1px solid var(--line);border-left:3px solid var(--fc);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:var(--panel)}
 .f.critical{--fc:var(--crimson)}.f.warning{--fc:var(--amber)}.f.note{--fc:var(--dim)}
 .f .t{display:flex;gap:10px;align-items:baseline;justify-content:space-between;font-weight:600}
