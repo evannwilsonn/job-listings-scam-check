@@ -103,18 +103,21 @@ def _sentence_after(text: str, end: int) -> str:
     return seg[:m.start()] if m else seg
 
 
-def _negated(text: str, m: re.Match) -> bool:
+def _negated(text: str, m: re.Match) -> str:
+    """The words that rule the match out ("never", "at no cost"), or "" when nothing does. Truthy means cleared."""
     before = " ".join(_sentence_before(text, m.start()).split()[-14:])
     neg = None
     for neg in _NEGATORS.finditer(before):
         pass
     if neg is not None and not _REQUIRE_VERBS.search(before[neg.end():]):
-        return True
-    return bool(_AFTER_CUES.search(_sentence_after(text, m.end())))
+        return neg.group(0)
+    after = _AFTER_CUES.search(_sentence_after(text, m.end()))
+    return after.group(0) if after else ""
 
 
-def _post_hire(text: str, m: re.Match) -> bool:
-    return bool(_POST_HIRE.search(text[max(0, m.start() - 120):m.end() + 120]))
+def _post_hire(text: str, m: re.Match) -> str:
+    hit = _POST_HIRE.search(text[max(0, m.start() - 120):m.end() + 120])
+    return hit.group(0) if hit else ""
 
 
 # An employer's own safety promise ("At no time will a conversation be moved to an alternative email", "We will
@@ -122,8 +125,9 @@ def _post_hire(text: str, m: re.Match) -> bool:
 _DISCLAIMER = re.compile(r"\b(?:at\s+no\s+time|will\s+never|would\s+never|we\s+never|never\s+(?:ask|request|contact|move)|will\s+not\s+ever|won't\s+ever)\b", re.IGNORECASE)
 
 
-def _disclaimer(text: str, m: re.Match) -> bool:
-    return bool(_DISCLAIMER.search(_sentence_before(text, m.start())))
+def _disclaimer(text: str, m: re.Match) -> str:
+    hit = _DISCLAIMER.search(_sentence_before(text, m.start()))
+    return hit.group(0) if hit else ""
 
 
 _GUARDS = {"negation": _negated, "post_hire": _post_hire, "disclaimer": _disclaimer}
@@ -240,6 +244,66 @@ def run_text_rules(text: str, rules: Optional[list] = None) -> List[Finding]:
             findings.append(Finding(rule.id, rule.severity, weight, rule.title, rule.why,
                                     [s[:90] for s in shown]))
     return findings
+
+
+# What cleared a would-be flag. Shown to students in green, framed as "why this wasn't counted", never as "this part is
+# safe": scammers copy reassuring lines on purpose, so a cleared phrase lowers nothing beyond the one match it rules out.
+GUARD_REASONS = {
+    "negation": "It's mentioned only to say it won't happen, so it wasn't counted.",
+    "post_hire": "It only comes up after you're hired, which is normal for payroll and tax forms, so it wasn't counted.",
+    "disclaimer": "It's part of a safety warning or the employer's own promise, so it wasn't counted.",
+    "to_you": "It describes money paid to you, not money you send, so it wasn't counted.",
+    "duty": "It describes a job duty or skill, not something they're asking you to do, so it wasn't counted.",
+}
+MAX_CLEARED = 8
+
+
+def clause_around(text: str, a: int, b: int) -> str:
+    """The words from the clearing cue through the match, trimmed to their sentence, for quoting back."""
+    lo = max(0, a)
+    while lo > 0 and text[lo - 1] not in ".;!?\n" and a - lo < 120:
+        lo -= 1
+    hi = min(len(text), b)
+    while hi < len(text) and text[hi] not in ".;!?\n" and hi - b < 80:
+        hi += 1
+    return re.sub(r"\s+", " ", text[lo:hi]).strip(" ,-")
+
+
+def cue_at(text: str, cue: str, m: re.Match) -> int:
+    """Where the clearing words sit: the nearest copy before the match, else the first one after it in the same sentence."""
+    low, c = text.lower(), cue.lower()
+    i = low.rfind(c, max(0, m.start() - 160), m.end())
+    if i >= 0:
+        return i
+    i = low.find(c, m.start(), m.end() + 160)
+    return i if i >= 0 and not _SENT_BREAK.search(text[m.end():i]) else -1
+
+
+def cleared_matches(text: str, rules: Optional[list] = None) -> List[dict]:
+    """Every place a rule matched but a guard ruled it out: the rule, the clearing words and the clause they sit in."""
+    text = normalize(text)
+    out: List[dict] = []
+    seen = set()
+    for rule in (rules if rules is not None else RULES):
+        for rx in rule.patterns:
+            for m in rx.finditer(text):
+                for g in rule.guards:
+                    cue = _GUARDS[g](text, m)
+                    if not cue:
+                        continue
+                    ci = cue_at(text, cue, m)
+                    a, b = (min(ci, m.start()), max(ci + len(cue), m.end())) if ci >= 0 else (m.start(), m.end())
+                    clause = clause_around(text, a, b)
+                    key = clause.lower()
+                    if key in seen:
+                        break
+                    seen.add(key)
+                    out.append({"rule_id": rule.id, "title": rule.title, "guard": g, "cue": cue.strip(),
+                                "matched": m.group(0).strip()[:90], "clause": clause[:200], "why": GUARD_REASONS[g]})
+                    break
+                if len(out) >= MAX_CLEARED:
+                    return out
+    return out
 
 
 # ---------- pay that works out to far above market ----------

@@ -26,7 +26,7 @@ from typing import Callable, Dict, List
 
 from .rules import normalize
 
-__all__ = ["ASKS", "ASK_LABELS", "MONEY_ASKS", "DATA_ASKS", "extract_asks", "ask_ids"]
+__all__ = ["ASKS", "ASK_LABELS", "MONEY_ASKS", "DATA_ASKS", "extract_asks", "ask_ids", "cleared_asks"]
 
 _F = re.IGNORECASE
 
@@ -40,7 +40,7 @@ _NEGATORS = re.compile(
 _REQUIRE_AFTER_NEG = re.compile(
     r"\b(?:must|need to|needs to|have to|has to|required to|you will|you'll|you pay|but|however|then|just|only)\b", _F)
 _AFTER_CUES = re.compile(
-    r"^[^.;!?\n]{0,60}\b(?:at no (?:cost|charge)|no cost|free of charge|for free|is free|are free|free to you|"
+    r"^[^.;!?\n]{0,60}\b(at no (?:cost|charge)|no cost|free of charge|for free|is free|are free|free to you|"
     r"covered by|paid for by|paid by (?:us|the|our)|we (?:pay|cover)|is waived|are waived|is not required|"
     r"are not required|is never required|will never be)\b", _F)
 # An employer's own safety promise or a scam warning describes the tactic in order to rule it out.
@@ -70,23 +70,28 @@ def _sentence_after(text: str, end: int) -> str:
     return seg[:m.start()] if m else seg
 
 
-def _g_negation(text: str, m: re.Match) -> bool:
+# Each guard returns the words that rule the match out ("never", "upon hire"), or "" when nothing does; truthy means
+# cleared. The words are shown to students in green as the reason a match wasn't counted.
+def _g_negation(text: str, m: re.Match) -> str:
     before = " ".join(_sentence_before(text, m.start()).split()[-10:])
     last = None
     for last in _NEGATORS.finditer(before):
         pass
     if last is not None and not _REQUIRE_AFTER_NEG.search(before[last.end():]):
-        return True
-    return bool(_AFTER_CUES.search(_sentence_after(text, m.end())))
+        return last.group(0)
+    after = _AFTER_CUES.search(_sentence_after(text, m.end()))
+    return after.group(1) if after else ""
 
 
-def _g_disclaimer(text: str, m: re.Match) -> bool:
+def _g_disclaimer(text: str, m: re.Match) -> str:
     sentence = _sentence_before(text, m.start()) + m.group(0) + _sentence_after(text, m.end())
-    return bool(_DISCLAIMER.search(sentence))
+    hit = _DISCLAIMER.search(sentence)
+    return hit.group(0) if hit else ""
 
 
-def _g_post_hire(text: str, m: re.Match) -> bool:
-    return bool(_POST_HIRE.search(text[max(0, m.start() - 140):m.end() + 140]))
+def _g_post_hire(text: str, m: re.Match) -> str:
+    hit = _POST_HIRE.search(text[max(0, m.start() - 140):m.end() + 140])
+    return hit.group(0) if hit else ""
 
 
 # Payment flowing TO the student ("we pay you via PayPal", "you'll be paid via Zelle") is not an ask.
@@ -97,11 +102,13 @@ _THEY_SEND = re.compile(r"\b(?:i|we|they|he|she|employer|company)(?:'ll|'d|\s+wi
                         r"(?:\w+ly\s+)?$", _F)
 
 
-def _g_to_you(text: str, m: re.Match) -> bool:
-    if _TO_YOU.search(m.group(0)[:60]):
-        return True
+def _g_to_you(text: str, m: re.Match) -> str:
+    hit = _TO_YOU.search(m.group(0)[:60])
+    if hit:
+        return hit.group(0)
     before = " ".join(_sentence_before(text, m.start()).split()[-4:])
-    return bool(_THEY_SEND.search(before + " " if before and not before.endswith(" ") else before))
+    hit = _THEY_SEND.search(before + " " if before and not before.endswith(" ") else before)
+    return hit.group(0).strip() if hit and hit.group(0).strip() else ""
 
 
 # A job duty or requirement ("must have a valid driver's license", "verify routing numbers") is not an ask.
@@ -109,12 +116,13 @@ _DUTY = re.compile(r"\b(?:verify|verifies|verifying|process(?:es|ing)?|reconcil\
                    r"experience\s+(?:with|in)|knowledge\s+of|familiar\w*)\b", _F)
 
 
-def _g_duty(text: str, m: re.Match) -> bool:
+def _g_duty(text: str, m: re.Match) -> str:
     before = " ".join(_sentence_before(text, m.start()).split()[-6:])
-    return bool(_DUTY.search(before))
+    hit = _DUTY.search(before)
+    return hit.group(0) if hit else ""
 
 
-_GUARDS: Dict[str, Callable[[str, re.Match], bool]] = {
+_GUARDS: Dict[str, Callable[[str, re.Match], str]] = {
     "negation": _g_negation, "disclaimer": _g_disclaimer, "post_hire": _g_post_hire,
     "to_you": _g_to_you, "duty": _g_duty,
 }
@@ -360,4 +368,29 @@ def extract_asks(text: str) -> List[dict]:
             out.append({"ask": spec["id"], "label": spec["label"], "evidence": best.group(0).strip()[:160],
                         "money": spec["money"], "start": best.start()})
     out.sort(key=lambda a: a["start"])
+    return out
+
+
+def cleared_asks(text: str, limit: int = 8) -> List[dict]:
+    """Every place an ask's wording appeared but a guard ruled it out (same shape as rules.cleared_matches)."""
+    from .rules import GUARD_REASONS, clause_around, cue_at
+    norm = normalize(text or "")
+    out, seen = [], set()
+    for spec in ASKS:
+        for rx in spec["patterns"]:
+            for m in rx.finditer(norm):
+                for g in spec["guards"]:
+                    cue = _GUARDS[g](norm, m)
+                    if not cue:
+                        continue
+                    ci = cue_at(norm, cue, m)
+                    a, b = (min(ci, m.start()), max(ci + len(cue), m.end())) if ci >= 0 else (m.start(), m.end())
+                    clause = clause_around(norm, a, b)
+                    if clause.lower() not in seen:
+                        seen.add(clause.lower())
+                        out.append({"rule_id": "ask:" + spec["id"], "title": spec["label"], "guard": g, "cue": cue.strip(),
+                                    "matched": m.group(0).strip()[:90], "clause": clause[:200], "why": GUARD_REASONS[g]})
+                    break
+                if len(out) >= limit:
+                    return out
     return out
