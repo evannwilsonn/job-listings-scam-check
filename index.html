@@ -77,6 +77,18 @@ h2{font:400 12.5px var(--varsity);letter-spacing:.12em;text-transform:uppercase;
 .empty{color:var(--soft)}
 footer{margin-top:44px;color:var(--dim);font-size:12.5px;border-top:1px solid var(--line);padding-top:16px}
 footer a{color:var(--gold)}
+.mk-card{margin-top:6px}
+.mk-legend{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 12px;font:500 11px/1 var(--mono, monospace);letter-spacing:.12em;text-transform:uppercase}
+.mk-legend span{padding:6px 9px;border-radius:6px}
+.mk-text{white-space:pre-wrap;word-break:break-word;font-size:15px;line-height:1.75}
+.mk-red,.mk-amb,.mk-grn{color:inherit;border-radius:4px;padding:1px 3px}
+.mk-red{background:rgba(229,48,79,.2);box-shadow:inset 0 -2px #E5304F;color:#FFB3BF}
+.mk-amb{background:rgba(232,162,26,.18);box-shadow:inset 0 -2px #E8A21A;color:#FFD98A}
+.mk-grn{background:rgba(46,204,113,.16);box-shadow:inset 0 -2px #2ECC71;color:#9EF0C2}
+.mk-cleared{list-style:none;margin:16px 0 8px;padding:0;display:grid;gap:10px}
+.mk-cleared li{display:grid;gap:4px;font-size:14px;opacity:.9}
+.mk-cleared b{color:#9EF0C2}
+.mk-note{font-size:12.5px;opacity:.6;margin-top:6px}
 </style>
 </head>
 <body>
@@ -173,17 +185,20 @@ footer a{color:var(--gold)}
     const seg = text.slice(end, end + 120); const m = SENT_BREAK.exec(seg);
     return m ? seg.slice(0, m.index) : seg;
   }
+  // Each guard returns the words that rule a match out ("never", "upon hire"), or "" when nothing does.
   function negated(text, m) {
     const before = sentenceBefore(text, m.index).split(/\s+/).filter(Boolean).slice(-14).join(" ");
     let neg = null; for (const n of allMatches(NEGATORS, before)) neg = n;
-    if (neg && !REQUIRE.test(before.slice(neg.index + neg[0].length))) return true;
-    return AFTER.test(sentenceAfter(text, m.index + m[0].length));
+    if (neg && !REQUIRE.test(before.slice(neg.index + neg[0].length))) return neg[0];
+    const a = AFTER.exec(sentenceAfter(text, m.index + m[0].length));
+    return a ? a[0] : "";
   }
   function postHire(text, m) {
-    return POST_HIRE.test(text.slice(Math.max(0, m.index - 120), m.index + m[0].length + 120));
+    const h = POST_HIRE.exec(text.slice(Math.max(0, m.index - 120), m.index + m[0].length + 120));
+    return h ? h[0] : "";
   }
   const DISCLAIMER = /\b(?:at\s+no\s+time|will\s+never|would\s+never|we\s+never|never\s+(?:ask|request|contact|move)|will\s+not\s+ever|won't\s+ever)\b/i;
-  const disclaimer = (text, m) => DISCLAIMER.test(sentenceBefore(text, m.index));
+  const disclaimer = (text, m) => { const h = DISCLAIMER.exec(sentenceBefore(text, m.index)); return h ? h[0] : ""; };
   const GUARDS = {negation: negated, post_hire: postHire, disclaimer};
 
   // ---------------- rulepack ----------------
@@ -430,6 +445,65 @@ footer a{color:var(--gold)}
     }
     return out;
   }
+  // ---------------- what cleared a would-be flag (shown in green, never as "safe") ----------------
+  const GUARD_REASONS = {
+    negation: "It's mentioned only to say it won't happen, so it wasn't counted.",
+    post_hire: "It only comes up after you're hired, which is normal for payroll and tax forms, so it wasn't counted.",
+    disclaimer: "It's part of a safety warning or the employer's own promise, so it wasn't counted.",
+  };
+  const SENSITIVE = /\b(?:bank|banking|routing|account\s+number|log-?in|password|ssn|social\s+security|driver'?s?\s+licen[sc]e|passport|photo\s+id|id\s+card|gift\s*cards?|zelle|cash\s?app|venmo|paypal|western\s+union|moneygram|wire|bitcoin|btc|crypto\w*|usdt|telegram|whats\s?app|signal)\b|\$\s?\d/i;
+  const WEAK_NEG = new Set(["not", "no", "nor", "without", "zero", "neither", "nothing"]);
+  const ASK_VERB = /\b(?:pay|send|transfer|wire|buy|purchase|deposit|reply\s+with|text\s+(?:me|us)|upload|share)\b/i;
+  const NEG_STRONG = /\b(?:never|will\s+not|won't|do\s+not|don't|does\s+not|doesn't|cannot|can't|at\s+no\s+time)\b/i;
+  function cueAt(text, cue, m) {
+    const low = text.toLowerCase(), c = cue.toLowerCase(), end = m.index + m[0].length;
+    let i = low.lastIndexOf(c, m.index + m[0].length - c.length);
+    if (i >= Math.max(0, m.index - 160)) return SENT_BREAK.test(text.slice(i + c.length, m.index)) ? -1 : i;
+    i = low.indexOf(c, m.index);
+    return i >= 0 && i <= end + 160 && !SENT_BREAK.test(text.slice(end, i)) ? i : -1;
+  }
+  function clauseAround(text, a, b) {
+    let lo = a; while (lo > 0 && !/[.;!?\n]/.test(text[lo - 1]) && a - lo < 120) lo--;
+    let hi = b; while (hi < text.length && !/[.;!?\n]/.test(text[hi]) && hi - b < 80) hi++;
+    return text.slice(lo, hi).replace(/\s+/g, " ").replace(/^[\s,-]+|[\s,-]+$/g, "");
+  }
+  function showAsCleared(clause, cue, guard) {
+    const cl = clause.toLowerCase(), cu = cue.toLowerCase().trim();
+    if (!cu || !cl.includes(cu)) return false;
+    if (SENSITIVE.test(clause) && (guard === "disclaimer" || WEAK_NEG.has(cu))) return false;
+    const after = clause.slice(cl.indexOf(cu) + cu.length);
+    if (ASK_VERB.test(after) && SENSITIVE.test(after)) return false;
+    if (guard === "negation" && cl.indexOf(cu) > 0 && ASK_VERB.test(after) && !NEG_STRONG.test(cu)) return false;
+    return true;
+  }
+  function clearedMatches(text, findings) {
+    text = normalize(text);
+    const fired = new Set(findings.map(f => f.rule_id));
+    const evidence = findings.flatMap(f => f.matched || []).filter(e => e.length >= 4).map(e => e.toLowerCase());
+    const out = [], seen = new Set();
+    for (const rule of RULES) {
+      if (fired.has(rule.id)) continue;
+      for (const rx of rule.rx) for (const m of allMatches(rx, text)) {
+        for (const g of rule.guards) {
+          const cue = GUARDS[g](text, m);
+          if (!cue) continue;
+          const ci = cueAt(text, cue, m);
+          if (ci >= 0) {
+            const clause = clauseAround(text, Math.min(ci, m.index), Math.max(ci + cue.length, m.index + m[0].length));
+            const key = clause.toLowerCase();
+            if (!seen.has(key) && showAsCleared(clause, cue, g) && !evidence.some(e => key.includes(e) || e.includes(key))) {
+              seen.add(key);
+              out.push({rule_id: rule.id, title: rule.title, guard: g, cue, clause: clause.slice(0, 200), why: GUARD_REASONS[g]});
+            }
+          }
+          break;
+        }
+        if (out.length >= 6) return out;
+      }
+    }
+    return out;
+  }
+
   function check(text, sender) {
     text = (text || "").trim().slice(0, 8000); sender = (sender || "").trim().slice(0, 200);
     const r = scorePosting("", text + (sender ? "\n" + sender : ""), "", null);
@@ -444,7 +518,7 @@ footer a{color:var(--gold)}
     const [key, ttl, advice] = LEVELS[level];
     return {level, key, title: ttl, advice, score, band: b, findings, lead_gen: r.lead_gen};
   }
-  root.NCS = {normalize, runTextRules, scorePosting, check, linkFindings, LEVELS, ruleset: RULEPACK.version};
+  root.NCS = {normalize, runTextRules, scorePosting, check, linkFindings, clearedMatches, LEVELS, ruleset: RULEPACK.version};
 })(typeof window !== "undefined" ? window : globalThis);
 
 </script>
@@ -489,6 +563,40 @@ footer a{color:var(--gold)}
       <p>${esc(f.why)}</p>${m ? `<div>${m}</div>` : ""}</div>`;
   }
 
+  // The pasted text, marked up: red for critical signals, amber for warnings, green for wording ruled out by its context.
+  // Every slice of the paste goes through esc(); only fixed class names are added.
+  function wordsRx(phrase) {
+    const words = (phrase || "").match(/[\w$@.'\/%-]+/g);
+    if (!words || words.join(" ").length < 3) return null;
+    return new RegExp(words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("[\\s\\W]{0,3}"), "gi");
+  }
+  function marked(text, findings, cleared) {
+    const spans = [];
+    const add = (phrase, cls) => {
+      const rx = wordsRx(phrase); if (!rx) return false;
+      let hit = false, m;
+      while ((m = rx.exec(text))) {
+        if (!m[0]) { rx.lastIndex++; continue; }
+        const a = m.index, b = a + m[0].length;
+        if (!spans.some(([x, y]) => a < y && x < b)) { spans.push([a, b, cls]); hit = true; }
+      }
+      return hit;
+    };
+    for (const f of findings) for (const e of f.matched || []) add(e, f.severity === "critical" ? "mk-red" : "mk-amb");
+    const placed = cleared.filter(c => add(c.clause, "mk-grn"));
+    if (!spans.length) return "";
+    spans.sort((p, q) => p[0] - q[0]);
+    let out = "", at = 0;
+    for (const [a, b, cls] of spans) { out += esc(text.slice(at, a)) + `<mark class="${cls}">${esc(text.slice(a, b))}</mark>`; at = b; }
+    out += esc(text.slice(at));
+    const used = new Set(spans.map(s => s[2]));
+    const legend = [["mk-red", "Scam signal"], ["mk-amb", "Warning"], ["mk-grn", "Ruled out by context"]]
+      .filter(([c]) => used.has(c)).map(([c, t]) => `<span class="${c}">${t}</span>`).join("");
+    const greens = placed.map(c => `<li><mark class="mk-grn">\u201c${esc(c.clause.slice(0, 160))}\u201d</mark><span><b>Not counted:</b> ${esc(c.title)}. ${esc(c.why)}</span></li>`).join("");
+    return `<h2>How we read it</h2><div class="card mk-card"><p class="mk-legend">${legend}</p><div class="mk-text">${out}</div>` +
+      (greens ? `<ul class="mk-cleared">${greens}</ul><p class="mk-note">Green explains why a phrase didn't count against the message. It doesn't mean the message is safe: scammers copy reassuring lines too.</p>` : "") + `</div>`;
+  }
+
   function run() {
     const text = $("text").value.trim();
     if (!text) return;
@@ -519,6 +627,7 @@ footer a{color:var(--gold)}
         <p>${esc(r.lead_gen.verdict)}</p><ul>${r.lead_gen.reasons.map(x => `<li>${esc(x.reason)}</li>`).join("")}</ul></div>`;
     }
     if (r.findings.length) html += `<h2>What we found</h2>` + r.findings.map(finding).join("");
+    html += marked(text.slice(0, 8000), r.findings, NCS.clearedMatches(text.slice(0, 8000), r.findings));
     html += `<h2>What to do</h2><ul class="steps">${STEPS[r.level].map(s => `<li>${esc(s)}</li>`).join("")}</ul>`;
     $("result").innerHTML = html;
     $("result").scrollIntoView({behavior: "smooth", block: "start"});

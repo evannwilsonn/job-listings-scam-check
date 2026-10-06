@@ -373,7 +373,7 @@ def extract_asks(text: str) -> List[dict]:
 
 def cleared_asks(text: str, limit: int = 8) -> List[dict]:
     """Every place an ask's wording appeared but a guard ruled it out (same shape as rules.cleared_matches)."""
-    from .rules import GUARD_REASONS, clause_around, cue_at
+    from .rules import GUARD_REASONS, clause_around, cue_at, show_as_cleared
     norm = normalize(text or "")
     out, seen = [], set()
     for spec in ASKS:
@@ -384,9 +384,10 @@ def cleared_asks(text: str, limit: int = 8) -> List[dict]:
                     if not cue:
                         continue
                     ci = cue_at(norm, cue, m)
-                    a, b = (min(ci, m.start()), max(ci + len(cue), m.end())) if ci >= 0 else (m.start(), m.end())
-                    clause = clause_around(norm, a, b)
-                    if clause.lower() not in seen:
+                    if ci < 0:
+                        break
+                    clause = clause_around(norm, min(ci, m.start()), max(ci + len(cue), m.end()))
+                    if clause.lower() not in seen and show_as_cleared(clause, cue, g):
                         seen.add(clause.lower())
                         out.append({"rule_id": "ask:" + spec["id"], "title": spec["label"], "guard": g, "cue": cue.strip(),
                                     "matched": m.group(0).strip()[:90], "clause": clause[:200], "why": GUARD_REASONS[g]})

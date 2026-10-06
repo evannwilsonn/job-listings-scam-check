@@ -274,9 +274,41 @@ def cue_at(text: str, cue: str, m: re.Match) -> int:
     low, c = text.lower(), cue.lower()
     i = low.rfind(c, max(0, m.start() - 160), m.end())
     if i >= 0:
-        return i
+        return i if not _SENT_BREAK.search(text[i + len(c):m.start()]) else -1
     i = low.find(c, m.start(), m.end() + 160)
     return i if i >= 0 and not _SENT_BREAK.search(text[m.end():i]) else -1
+
+
+# A green mark must never land on a real request for money or identity. These cues are too weak to vouch for a clause
+# that also names bank, ID, payment-app or crypto details ("For fraud prevention, send your banking login", "To prove you
+# are not a scammer, send your SSN"), and a "covered by" / "paid by" cue doesn't clear a clause that goes on to ask for
+# payment ("the fee is covered by your first paycheck, so pay it today via Cash App").
+_SENSITIVE = re.compile(
+    r"\b(?:bank|banking|routing|account\s+number|log-?in|password|ssn|social\s+security|driver'?s?\s+licen[sc]e|passport|"
+    r"photo\s+id|id\s+card|gift\s*cards?|zelle|cash\s?app|venmo|paypal|western\s+union|moneygram|wire|bitcoin|btc|crypto\w*|"
+    r"usdt|telegram|whats\s?app|signal)\b|\$\s?\d", re.IGNORECASE)
+_WEAK_NEGATORS = {"not", "no", "nor", "without", "zero", "neither", "nothing"}
+_ASK_VERB = re.compile(r"\b(?:pay|send|transfer|wire|buy|purchase|deposit|reply\s+with|text\s+(?:me|us)|upload|share)\b",
+                       re.IGNORECASE)
+
+
+def show_as_cleared(clause: str, cue: str, guard: str) -> bool:
+    """Whether a ruled-out clause is safe to show in green. When in doubt it isn't: no mark beats a green mark on a scam ask."""
+    cl, cu = clause.lower(), cue.lower().strip()
+    if not cu or cu not in cl:
+        return False
+    if _SENSITIVE.search(clause) and (guard in ("disclaimer", "to_you", "duty") or cu in _WEAK_NEGATORS):
+        return False
+    after = clause[cl.find(cu) + len(cu):]
+    if _ASK_VERB.search(after) and _SENSITIVE.search(after):
+        return False             # "we never ask for fees, just send $200 via Zelle": the clause still makes the ask
+    if guard == "negation" and cl.find(cu) > 0 and _ASK_VERB.search(after) and not _NEG_STRONG.search(cu):
+        return False
+    return True
+
+
+_NEG_STRONG = re.compile(r"\b(?:never|will\s+not|won't|do\s+not|don't|does\s+not|doesn't|cannot|can't|at\s+no\s+time)\b",
+                         re.IGNORECASE)
 
 
 def cleared_matches(text: str, rules: Optional[list] = None) -> List[dict]:
@@ -292,10 +324,11 @@ def cleared_matches(text: str, rules: Optional[list] = None) -> List[dict]:
                     if not cue:
                         continue
                     ci = cue_at(text, cue, m)
-                    a, b = (min(ci, m.start()), max(ci + len(cue), m.end())) if ci >= 0 else (m.start(), m.end())
-                    clause = clause_around(text, a, b)
+                    if ci < 0:
+                        break                      # the clearing words are in another sentence: nothing honest to quote
+                    clause = clause_around(text, min(ci, m.start()), max(ci + len(cue), m.end()))
                     key = clause.lower()
-                    if key in seen:
+                    if key in seen or not show_as_cleared(clause, cue, g):
                         break
                     seen.add(key)
                     out.append({"rule_id": rule.id, "title": rule.title, "guard": g, "cue": cue.strip(),
