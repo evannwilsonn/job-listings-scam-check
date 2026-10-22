@@ -35,3 +35,7 @@
 {"id": "live_in_camp_stipend", "title": "Summer Camp Counselor", "company": "Lakeside Camp", "description": "Work with campers ages 8 to 14. Room and board included. $450 weekly stipend for the 9-week season.", "urls": []}
 {"id": "live_in_remote_cancels", "title": "Assistant", "company": "", "description": "Remote assistant needed, a few hours a day. Housing provided for travel. $500 weekly.", "urls": []}
 {"id": "live_in_americorps", "title": "Conservation Crew Member", "company": "", "description": "AmeriCorps crew. $380 per week living allowance plus an education award.", "urls": []}
+{"id": "tuition_reimbursement_benefit", "title": "Sales Development Representative", "description": "Benefits include health insurance, 401(k), tuition reimbursement, certification support and paid time off.", "company": "Acme Security", "urls": []}
+{"id": "tuition_for_course_fee", "title": "Data Entry", "description": "You must pay the tuition for the certification course before you start.", "company": "", "urls": []}
+{"id": "fintech_payment_vehicles", "title": "Fraud Investigator", "description": "Investigate fraud across payment vehicles including ACH, debit card, cryptocurrency and more.", "company": "Acme Pay", "urls": []}
+{"id": "payment_method_usdt", "title": "Assistant", "description": "Your payment method will be USDT, sent every Friday.", "company": "", "urls": []}

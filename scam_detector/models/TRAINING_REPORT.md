@@ -1,18 +1,18 @@
 # Model training report (2026-10-22)
 
-Trained on 325 rows (88 scam, 192 legit, 45 lead-gen) in 324 template groups, plus 528 adversarial copies of the training scams at 0.3 weight. Dropped 0 training rows that near-copied a holdout or hard-legit row.
-Threshold 0.69 (lowest that flags no rules-quiet legit row in cross-validation, plus a 0.1 margin). Model format 2: rules, words and phrases, pieces of words, and the shape of the text.
+Trained on 360 rows (108 scam, 207 legit, 45 lead-gen) in 359 template groups, plus 648 adversarial copies of the training scams at 0.3 weight. Dropped 0 training rows that near-copied a holdout or hard-legit row.
+Threshold 0.92 (lowest that flags no rules-quiet legit row in cross-validation, plus a 0.1 margin). Model format 2: rules, words and phrases, pieces of words, and the shape of the text.
 
 | Set | Scams caught | Legit wrongly flagged | Lead-gen called scam |
 |---|---|---|---|
-| Cross-validation, rules + model | 77/88 | 1/192 | 2/45 |
-| Holdout, rules alone | 17/28 | 1/42 | 0/10 |
-| Holdout, rules + shipped model | 21/28 | 1/42 | 1/10 |
-| Holdout, rules + this model | 22/28 | 1/42 | 1/10 |
+| Cross-validation, rules + model | 83/108 | 0/207 | 2/45 |
+| Holdout, rules alone | 17/28 | 0/42 | 0/10 |
+| Holdout, rules + shipped model | 22/28 | 0/42 | 1/10 |
+| Holdout, rules + this model | 22/28 | 0/42 | 1/10 |
 |   field_2026_09_holdout.jsonl, rules alone | 12/14 | 0/16 | 0/4 |
 |   field_2026_09_holdout.jsonl, rules + this model | 14/14 | 0/16 | 1/4 |
-|   field_2026_10_holdout.jsonl, rules alone | 5/14 | 1/26 | 0/6 |
-|   field_2026_10_holdout.jsonl, rules + this model | 8/14 | 1/26 | 0/6 |
+|   field_2026_10_holdout.jsonl, rules alone | 5/14 | 0/26 | 0/6 |
+|   field_2026_10_holdout.jsonl, rules + this model | 8/14 | 0/26 | 0/6 |
 | Hard-legit set, rules alone | 0/0 | 0/12 | - |
 | Hard-legit set, rules + this model | 0/0 | 0/12 | - |
 
@@ -24,30 +24,30 @@ Wording the model now weighs toward scam that no rule fires on by itself. Read t
 
 | Wording | Weight | In labeled scams | In legit rows |
 |---|---|---|---|
-| shippers | +0.476 | 3 | 0 |
-| qy | +0.476 | 3 | 0 |
-| qy shippers | +0.476 | 3 | 0 |
-| hi | +0.37 | 5 | 1 |
-| and also | +0.345 | 5 | 1 |
-| kindly | +0.325 | 16 | 1 |
-| hello | +0.306 | 16 | 0 |
-| to put | +0.288 | 2 | 0 |
-| salary of | +0.274 | 5 | 0 |
-| dollars | +0.272 | 5 | 0 |
-| 000 dollars | +0.267 | 3 | 0 |
-| this email | +0.266 | 4 | 0 |
-| employment agreement | +0.259 | 2 | 0 |
-| assistant needed | +0.259 | 4 | 0 |
-| block | +0.257 | 4 | 0 |
-| logo | +0.256 | 2 | 0 |
-| message hi | +0.253 | 2 | 0 |
-| contact our | +0.248 | 3 | 0 |
-| hr department | +0.247 | 4 | 0 |
-| fri | +0.245 | 3 | 0 |
-| regards | +0.244 | 16 | 1 |
-| message | +0.243 | 13 | 2 |
-| 0000 text | +0.234 | 3 | 0 |
-| i am | +0.234 | 8 | 2 |
-| time job | +0.23 | 15 | 4 |
+| ly | +0.673 | 2 | 0 |
+| i am | +0.58 | 13 | 2 |
+| kindly | +0.505 | 21 | 1 |
+| shippers | +0.422 | 3 | 0 |
+| qy | +0.421 | 3 | 0 |
+| qy shippers | +0.421 | 3 | 0 |
+| hi | +0.416 | 9 | 1 |
+| walmart | +0.402 | 4 | 1 |
+| me | +0.401 | 17 | 5 |
+| hello | +0.351 | 22 | 0 |
+| regards | +0.335 | 22 | 1 |
+| and also | +0.33 | 6 | 1 |
+| back | +0.329 | 12 | 4 |
+| soon | +0.305 | 9 | 2 |
+| hi i | +0.303 | 6 | 0 |
+| she | +0.303 | 3 | 1 |
+| the assignment | +0.301 | 2 | 0 |
+| am a | +0.297 | 3 | 0 |
+| professor | +0.291 | 6 | 0 |
+| the lessons | +0.29 | 3 | 0 |
+| remote research | +0.28 | 3 | 0 |
+| possess a | +0.276 | 3 | 1 |
+| 00 if | +0.268 | 3 | 0 |
+| hope | +0.266 | 3 | 1 |
+| you free | +0.265 | 2 | 0 |
 
 Numbers this small are a sanity check, not a measured accuracy. Add reviewer decisions with --extra and retrain.

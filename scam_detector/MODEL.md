@@ -165,7 +165,7 @@ after a person marks each rule reviewed. The model finds the wording; a person d
 | 2 | 207 (+ October field batch) | 19/28 | none | shipped |
 | 3 | 306 (+ 99 LinkedIn/Indeed/ZipRecruiter/Glassdoor listings) | 19/28 | none | shipped |
 | 4 | 306 + 528 adversarial copies, format 2 | 21/28 | none | shipped |
-| 5 | 325 (+ 19 public live-in weekly-stipend jobs) + 528 adversarial copies, `live_in` guard | **22/28** | none | **shipped (current)** |
+| 5 | 360 (+ 35 Oct 22 labeled rows, + 19 public live-in weekly-stipend jobs) + 648 adversarial copies, `live_in` and `advance_fee`/`irreversible_pay` fixes | **22/28**, 0/42 legit flagged | none | **shipped (current)** |
 
 - **Run 1** had learned "weekly pay alone = scam". It was fixed with 29 real weekly-pay jobs; see
   `data/FIELD_TEST_2026_10.md`.
@@ -184,8 +184,9 @@ after a person marks each rule reviewed. The model finds the wording; a person d
   AmeriCorps stipends. The new `live_in` guard clears the rule for on-site seasonal work with no remote mention. It then
   flagged one October holdout row, because its threshold (0.65) was set by a rules-quiet live-in BU program-assistant row.
   19 public live-in weekly-stipend postings (camps, university summer residence programs, conservation corps,
-  outdoor-ed, seasonal), confirmed by a person, brought the threshold to 0.69: 22/28 holdout, October 8/14, no new false
-  alarm, hard-legit 0/12. Red-team unchanged.
+  outdoor-ed, seasonal), confirmed by a person, brought the threshold to 0.69. Merged with the same-day retrain on 35 newly labeled rows (20 scam, 15 legit) and its
+  advance_fee / irreversible_pay fixes, the final model trains on 360 rows at threshold 0.92: 22/28 holdout, October 8/14,
+  0/42 legit flagged (was 1), hard-legit 0/12. Red-team unchanged.
 
 Where the gain comes from: learned weights on the rules, and now the shape of the text. Combinations of weak signals
 that add up to less than the rules' review threshold are still scams. The phrase features count for little until there
