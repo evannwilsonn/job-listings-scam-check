@@ -69,6 +69,22 @@ When a reviewer catches something new, also add it to a corpus file (with the
 protects that detection forever. `real_corpus_clean.jsonl` is the right home for
 real examples; keep synthetic ones in `synthetic_scams.jsonl`.
 
+## Ship the rule to the browser page
+
+The page carries its own copy of the rulepack and a JS port of the matcher. After
+a rule change, from the repo root:
+
+```bash
+python tools/build_web.py          # regenerates index.html from the rulepack and web/
+python tools/parity.py             # the JS engine must score the fixtures like Python does
+```
+
+Add one synthetic case for the new rule to `tests/fixtures/parity_cases.jsonl`
+(no real names, addresses or numbers); `tests/test_web_parity.py` fails on any
+active rule that no fixture triggers. If the rule uses a regex feature that only
+Python supports (possessive quantifiers, `(?i)` inline flags, `\Z`), the parity
+run will show the mismatch before anyone pastes a real message into the page.
+
 ## Guardrails, and why
 
 * **Human promotion only.** The text being mined was written by scammers. A loop

@@ -22,7 +22,8 @@ scams we've labeled?
   the frozen holdouts and `data/redteam_eval.jsonl` stay unseen.
 - **Training:** `python -m scam_detector.tools.train_model`. It needs scikit-learn (`requirements-dev.txt`).
   The site itself doesn't: `ml.py` does the inference in plain Python from one JSON file,
-  `models/scam_model.json`, and `demo/ml.js` does the same maths in the browser (`tests/test_ml_js.py` checks parity).
+  `models/scam_model.json`. The static page in this repo (`index.html`) runs the rules only, not the model;
+  the model is served through the HTTP API.
 - **Data:** every labeled corpus in `data/` except the frozen holdout, plus the synthetic scams at half
   weight, plus reviewer decisions: `python export_labeled.py --db jobs.db -o labeled.jsonl`, then
   `train_model --extra labeled.jsonl`. Near-copies of the same template share one example's weight.

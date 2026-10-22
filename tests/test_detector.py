@@ -42,6 +42,20 @@ def test_api_refuses_oversized_bodies_and_ignores_spoofed_client_addresses():
     assert codes[-1] == 429                      # a made-up X-Forwarded-For doesn't buy a fresh allowance
 
 
+def test_api_second_look_never_moves_the_score():
+    from fastapi.testclient import TestClient
+    from scam_detector import api, security
+    security.analyze_limiter._hits.clear()
+    c = TestClient(api.app)
+    body = {"description": "Pay a $90 training fee to start", "run_network": False}
+    with_model = c.post("/analyze", json=body).json()
+    without = c.post("/analyze", json={**body, "second_look": False}).json()
+    assert (with_model["score"], with_model["band"]) == (without["score"], without["band"])
+    extra = [f for f in with_model["findings"] if f["rule_id"] == "model_second_look"]
+    assert all(f["weight"] == 0 for f in extra)
+    assert not any(f["rule_id"] == "model_second_look" for f in without["findings"])
+
+
 def test_network_lookups_are_capped():
     from scam_detector import scorer
     from scam_detector.intel import findings

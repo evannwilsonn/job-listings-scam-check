@@ -1,0 +1,26 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pip install -r requirements.txt pytest httpx
+      - name: Python engine, API and parity tests
+        run: python -m pytest -q tests
+      - name: index.html is built from web/ and the rulepack
+        run: python tools/build_web.py --check
+      - name: Browser engine agrees with the Python engine
+        run: python tools/parity.py
