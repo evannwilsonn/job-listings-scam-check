@@ -1,7 +1,7 @@
 # Red-team report
 
 33 scam seeds from the holdouts and archives; the originals are caught 26/33.
-Each seed is rewritten with the tricks below. A variant counts as caught when the rules send it to a person or the model flags it. Run seed 334574230: every run makes new variants, so fixes are never graded on the variants they were built from.
+Each seed is rewritten with the tricks below. A variant counts as caught when the rules send it to a person or the model flags it. Run seed 815538435: every run makes new variants, so fixes are never graded on the variants they were built from.
 
 | Trick | Variants caught |
 |---|---|
