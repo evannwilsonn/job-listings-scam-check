@@ -60,7 +60,7 @@ except ImportError:                                                   # pragma: 
 DATA = Path(__file__).resolve().parent.parent / "data"
 MODELS = ml.MODEL_PATH.parent
 TRAIN_FILES = ["field_2026_09_tune.jsonl", "field_2026_10_tune.jsonl", "boards_2026_10_train.jsonl", "boards_2026_10_rules.jsonl",
-               "labeled_seed.jsonl", "real_corpus_clean.jsonl", "external_scams.jsonl"]
+               "labeled_seed.jsonl", "real_corpus_clean.jsonl", "external_scams.jsonl", "candidates_2026_10_22.jsonl"]
 HALF_WEIGHT = ["synthetic_scams.jsonl"]
 HOLDOUTS = ["field_2026_09_holdout.jsonl", "field_2026_10_holdout.jsonl"]     # frozen, never trained on
 HARD_LEGIT = "stress_legit.jsonl"

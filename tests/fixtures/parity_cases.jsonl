@@ -32,3 +32,7 @@
 {"id": "personal_channel_pii", "title": "", "description": "Reply from your personal email, not your school email, and text your full name to the number below. Include your student ID number and date of birth so we can set you up.", "company": "", "urls": []}
 {"id": "startup_cost_pitch", "title": "", "description": "There is a startup cost of $8 out of pocket to get started, then you earn as you go.", "company": "", "urls": []}
 {"id": "weekly_pay_assistant_no_amount", "title": "Personal Assistant", "description": "Personal assistant needed to help with errands and light admin, you will get paid weekly; flexible, remote, part-time.", "company": "", "urls": []}
+{"id": "tuition_reimbursement_benefit", "title": "Sales Development Representative", "description": "Benefits include health insurance, 401(k), tuition reimbursement, certification support and paid time off.", "company": "Acme Security", "urls": []}
+{"id": "tuition_for_course_fee", "title": "Data Entry", "description": "You must pay the tuition for the certification course before you start.", "company": "", "urls": []}
+{"id": "fintech_payment_vehicles", "title": "Fraud Investigator", "description": "Investigate fraud across payment vehicles including ACH, debit card, cryptocurrency and more.", "company": "Acme Pay", "urls": []}
+{"id": "payment_method_usdt", "title": "Assistant", "description": "Your payment method will be USDT, sent every Friday.", "company": "", "urls": []}
