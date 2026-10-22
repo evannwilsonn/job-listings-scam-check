@@ -66,7 +66,11 @@ function createEngine(RULEPACK) {
   }
   const DISCLAIMER = /\b(?:at\s+no\s+time|will\s+never|would\s+never|we\s+never|never\s+(?:ask|request|contact|move)|will\s+not\s+ever|won't\s+ever)\b/i;
   const disclaimer = (text, m) => { const h = DISCLAIMER.exec(sentenceBefore(text, m.index)); return h ? h[0] : ""; };
-  const GUARDS = {negation: negated, post_hire: postHire, disclaimer};
+  // On-site seasonal or live-in work (camps, AmeriCorps, room and board) pays weekly stipends; a remote mention cancels it.
+  const LIVE_IN = /\b(?:room\s*(?:and|&)\s*board|(?:free|provided|included|on-?site|staff)\s+(?:housing|lodging|meals)|(?:housing|lodging|meals)\s+(?:is\s+|are\s+)?(?:provided|included|available|on-?site)|(?:summer|day|overnight|residential|sleepaway)\s+camps?|campers?|americorps)\b/i;
+  const REMOTE = /\b(?:remote(?:ly)?|work(?:ing)?\s+from\s+home|wfh|from\s+anywhere|online|virtual(?:ly)?|telecommut\w*)\b/i;
+  const liveIn = (text, m) => { if (REMOTE.test(text)) return ""; const h = LIVE_IN.exec(text); return h ? h[0] : ""; };
+  const GUARDS = {negation: negated, post_hire: postHire, disclaimer, live_in: liveIn};
 
   // ---------------- rulepack ----------------
   const RULES = RULEPACK.rules.filter(r => (r.status || "active") === "active").map(r => ({
@@ -317,6 +321,7 @@ function createEngine(RULEPACK) {
     negation: "It's mentioned only to say it won't happen, so it wasn't counted.",
     post_hire: "It only comes up after you're hired, which is normal for payroll and tax forms, so it wasn't counted.",
     disclaimer: "It's part of a safety warning or the employer's own promise, so it wasn't counted.",
+    live_in: "It's a stipend for an on-site seasonal or live-in job, where weekly stipends are normal, so it wasn't counted.",
   };
   const SENSITIVE = /\b(?:bank|banking|routing|account\s+number|log-?in|password|ssn|social\s+security|driver'?s?\s+licen[sc]e|passport|photo\s+id|id\s+card|gift\s*cards?|zelle|cash\s?app|venmo|paypal|western\s+union|moneygram|wire|bitcoin|btc|crypto\w*|usdt|telegram|whats\s?app|signal)\b|\$\s?\d/i;
   const WEAK_NEG = new Set(["not", "no", "nor", "without", "zero", "neither", "nothing"]);

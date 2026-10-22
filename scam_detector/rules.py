@@ -130,7 +130,26 @@ def _disclaimer(text: str, m: re.Match) -> str:
     return hit.group(0) if hit else ""
 
 
-_GUARDS = {"negation": _negated, "post_hire": _post_hire, "disclaimer": _disclaimer}
+# A weekly stipend is normal pay for on-site seasonal and residential work: camps, outdoor education, farms, AmeriCorps
+# crews, usually with room and board. Scam offers quote the same round weekly sum for a few hours of remote work. In the
+# Oct 2026 training data every legit posting that tripped weekly_stipend but one named this context, and none of the 28
+# scams did. A remote mention anywhere in the posting cancels the guard, so a remote scam can't borrow the wording.
+_LIVE_IN = re.compile(
+    r"\b(?:room\s*(?:and|&)\s*board|(?:free|provided|included|on-?site|staff)\s+(?:housing|lodging|meals)|"
+    r"(?:housing|lodging|meals)\s+(?:is\s+|are\s+)?(?:provided|included|available|on-?site)|"
+    r"(?:summer|day|overnight|residential|sleepaway)\s+camps?|campers?|americorps)\b", re.IGNORECASE)
+_REMOTE = re.compile(r"\b(?:remote(?:ly)?|work(?:ing)?\s+from\s+home|wfh|from\s+anywhere|online|virtual(?:ly)?|telecommut\w*)\b",
+                     re.IGNORECASE)
+
+
+def _live_in(text: str, m: re.Match) -> str:
+    if _REMOTE.search(text):
+        return ""
+    hit = _LIVE_IN.search(text)
+    return hit.group(0) if hit else ""
+
+
+_GUARDS = {"negation": _negated, "post_hire": _post_hire, "disclaimer": _disclaimer, "live_in": _live_in}
 
 
 # ---------- rulepack ----------
@@ -253,6 +272,7 @@ GUARD_REASONS = {
     "post_hire": "It only comes up after you're hired, which is normal for payroll and tax forms, so it wasn't counted.",
     "disclaimer": "It's part of a safety warning or the employer's own promise, so it wasn't counted.",
     "to_you": "It describes money paid to you, not money you send, so it wasn't counted.",
+    "live_in": "It's a stipend for an on-site seasonal or live-in job, where weekly stipends are normal, so it wasn't counted.",
     "duty": "It describes a job duty or skill, not something they're asking you to do, so it wasn't counted.",
 }
 MAX_CLEARED = 8

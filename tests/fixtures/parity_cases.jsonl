@@ -32,3 +32,6 @@
 {"id": "personal_channel_pii", "title": "", "description": "Reply from your personal email, not your school email, and text your full name to the number below. Include your student ID number and date of birth so we can set you up.", "company": "", "urls": []}
 {"id": "startup_cost_pitch", "title": "", "description": "There is a startup cost of $8 out of pocket to get started, then you earn as you go.", "company": "", "urls": []}
 {"id": "weekly_pay_assistant_no_amount", "title": "Personal Assistant", "description": "Personal assistant needed to help with errands and light admin, you will get paid weekly; flexible, remote, part-time.", "company": "", "urls": []}
+{"id": "live_in_camp_stipend", "title": "Summer Camp Counselor", "company": "Lakeside Camp", "description": "Work with campers ages 8 to 14. Room and board included. $450 weekly stipend for the 9-week season.", "urls": []}
+{"id": "live_in_remote_cancels", "title": "Assistant", "company": "", "description": "Remote assistant needed, a few hours a day. Housing provided for travel. $500 weekly.", "urls": []}
+{"id": "live_in_americorps", "title": "Conservation Crew Member", "company": "", "description": "AmeriCorps crew. $380 per week living allowance plus an education award.", "urls": []}

@@ -62,3 +62,13 @@ def test_network_lookups_are_capped():
     text = " ".join(f"contact{i}@domain{i}.example" for i in range(500))
     assert len(findings._extract(text, [], "")[2]) <= findings.MAX_HOSTS
     assert scorer.MAX_NETWORK_DOMAINS == 8
+
+
+def test_weekly_stipend_live_in_guard():
+    from scam_detector.rules import run_text_rules
+    ids = lambda t: [f.rule_id for f in run_text_rules(t)]
+    assert "weekly_stipend" not in ids("Summer camp counselor. Room and board included. $450 weekly stipend.")
+    assert "weekly_stipend" not in ids("AmeriCorps crew member, $380 per week living allowance.")
+    # a remote mention anywhere cancels the guard, so remote scams can't borrow camp wording
+    assert "weekly_stipend" in ids("Remote assistant, few hours a day. Housing provided. $500 weekly.")
+    assert "weekly_stipend" in ids("Personal assistant needed, $450 weekly, flexible hours.")
