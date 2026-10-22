@@ -143,7 +143,7 @@
    "phrases": [],
    "patterns": [
     "\\b(?:send|sent|deposit|transfer|buy|purchase|codes?|top\\s?up|recharge|wire|withdraw\\w*|reimburse\\w*|pay\\s+(?:for|us|them|the|a|your|back))\\b[^.\\n]{0,40}\\b(?:bitcoin|btc|usdt|usdc|crypto(?:currency)?|gift\\s+cards?|apple\\s+cards?|itunes|zelle|cash\\s?app|venmo|western\\s+union|moneygram)\\b",
-    "\\b(?:paid|payment|payments|salary|wages?|pay)\\b[^.\\n]{0,40}\\b(?:bitcoin|btc|usdt|usdc|crypto(?:currency)?|gift\\s+cards?|apple\\s+cards?|itunes|western\\s+union|moneygram)\\b",
+    "\\b(?:paid|payment|payments|salary|wages?|pay)\\b(?!\\s+(?:vehicles?|rails?|processing|processors?|networks?|infrastructure|products?|platforms?|industry)\\b)[^.\\n]{0,40}\\b(?:bitcoin|btc|usdt|usdc|crypto(?:currency)?|gift\\s+cards?|apple\\s+cards?|itunes|western\\s+union|moneygram)\\b",
     "\\b(?:bitcoin|btc|usdt|usdc|crypto(?:currency)?|gift\\s+cards?|apple\\s+cards?|itunes|western\\s+union|moneygram)\\b[^.\\n]{0,25}\\b(?:paid|payment|payments|salary|deposit|transfer|codes?)\\b"
    ],
    "guards": [
