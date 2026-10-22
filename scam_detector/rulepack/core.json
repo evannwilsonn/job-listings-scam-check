@@ -31,7 +31,7 @@
     "training with a fee"
    ],
    "patterns": [
-    "\\b(?:fees?|tuition|charges?)\\b[^.\\n]{0,40}\\b(?:training|course|program|certification|onboarding|registration|processing|kit|equipment|softwares?|laptop|visa)\\b",
+    "\\b(?:fees?|tuition(?!\\s+(?:reimbursement|assistance|support|benefits?))|charges?)\\b[^.\\n]{0,40}\\b(?:training|course|program|certification|onboarding|registration|processing|kit|equipment|softwares?|laptop|visa)\\b",
     "\\b(?:training|course|program|certification|onboarding|registration|application|processing|visa|equipment|software|kit)\\s+(?:fees?|charges?|tuition|costs?)\\b",
     "\\$\\s?\\d[\\d,]*(?:\\.\\d\\d)?\\s+(?:paid\\s+)?(?:certification|training|course|program|mentorship|kit|software|equipment)\\b",
     "\\b(?:must|need to|have to|required to|first)\\b[^.\\n]{0,30}\\b(?:obtain|purchase|buy|pay(?: for)?)\\b[^.\\n]{0,30}\\$\\s?\\d[\\d,]*[^.\\n]{0,20}\\b(?:certification|training|course|program|onboarding|software|equipment|vendor|kit|fee)\\b",

@@ -24,6 +24,12 @@ def test_ssn_for_payroll_after_hire_is_fine():
     assert band("Cashier", "Your Social Security number is collected for payroll upon hire. $14/hr.", "Corner Market") == "clear"
 
 
+def test_tuition_reimbursement_is_a_benefit_not_a_fee():
+    assert band("Sales Development Representative", "Benefits include health insurance, 401(k), "
+                "tuition reimbursement, certification support and paid time off.", "Acme Security") == "clear"
+    assert band("Data Entry", "You must pay the tuition for the certification course before you start.", "") == "block"
+
+
 def test_ordinary_posting_is_clear():
     assert band("Marketing Intern", "Help plan campus events and write social posts. 15 hours a week, $16/hr. "
                 "Apply through our careers page.", "Acme") == "clear"
