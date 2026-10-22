@@ -85,14 +85,24 @@ real examples; keep synthetic ones in `synthetic_scams.jsonl`.
   ("must", "need to") follows it, and other rules stack independently, but assume
   determined attackers will find more. Watch the "missed" count in the queue header.
 
-## What a statistical model would need before it earns a place
+## The learned layer, and how it feeds the rules
 
-It is tempting to train a classifier and let it adapt on its own. Not yet. It
-needs a few hundred real, reviewer-labeled postings before it can be measured, and
-it would have to beat the rules on a held-out set the rules never saw. Until then
-it would learn the quirks of a tiny sample and the number you report would be
-fiction. When the export shows several hundred labels, add a model as a *second
-opinion* alongside the rules, never as a replacement, and gate it the same way.
+The statistical model exists now (`MODEL.md`), and it is held to the standard above:
+it is a *second opinion* alongside the rules, it only escalates, and it ships only
+when it beats the rules and the current model on holdouts it never saw, with no new
+false alarm. Three things make the loop self-improving rather than a monthly chore:
+
+- **Template memory** (`memory.py`): the wording of every scam a reviewer confirms is
+  matched against new checks at once. A mistaken label is undone by labeling the same
+  text legit.
+- **Drift** (`drift.py`): the model's scores and the share of words it has never seen
+  are compared with its training distribution every week. A shift shows on the Intel
+  page and brings the next retrain forward.
+- **Model-driven rule proposals**: every training run lists the wording it now weighs
+  toward scam that no rule covers (`models/TRAINING_REPORT.md`, "Learned, not yet a
+  rule"), and `train_model --propose proposed.json` writes them as an inert rulepack
+  fragment. They go through the same `regress.py` gate as mined candidates; the
+  model finds the wording, a person decides what becomes a rule.
 
 ## Sources worth watching for new techniques
 

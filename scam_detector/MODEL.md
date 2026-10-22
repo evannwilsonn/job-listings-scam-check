@@ -6,15 +6,28 @@ scams we've labeled?
 
 ## How it works
 
-- **Model:** logistic regression over two kinds of input: which rules fired (plus their total score), and
-  the words and two-word phrases in the posting (TF-IDF). It learns how much each rule should really count,
-  and, as the data grows, wording that no rule covers yet.
+- **Model (format 2):** logistic regression over four kinds of input:
+  1. which rules fired, plus their total score, so it learns how much each rule should really count;
+  2. the words and two-word phrases in the posting (TF-IDF), so it picks up wording no rule covers yet;
+  3. pieces of each word, 3 to 5 letters (TF-IDF), so `ch3que`, `whats app` and `cheque` still look like what they are
+     after the normalizer has done what it can;
+  4. the shape of the text, 24 traits a reviewer notices before reading a rule: how much it talks to "you", whether it
+     lists requirements and benefits, shouting, emoji, money mentions, pay talk with no amount, a free-mail address, a
+     named legal entity, and so on (`ml.SHAPE`). The largest learned weights are *lists requirements* (toward legit) and
+     *written at "you"* (toward scam).
+  Format-1 files (rules + words) still load.
+- **Adversarial training:** every training scam is also seen rewritten the way a filter-dodging scammer would (the
+  offline tricks in `tools/redteam.py`: synonyms, leetspeak, zero-width characters, a polite tone, no dollar amounts),
+  at 0.3 of the original's weight. The copies are made from training rows only, inside each cross-validation fold, so
+  the frozen holdouts and `data/redteam_eval.jsonl` stay unseen.
 - **Training:** `python -m scam_detector.tools.train_model`. It needs scikit-learn (`requirements-dev.txt`).
   The site itself doesn't: `ml.py` does the inference in plain Python from one JSON file,
-  `models/scam_model.json`.
+  `models/scam_model.json`, and `demo/ml.js` does the same maths in the browser (`tests/test_ml_js.py` checks parity).
 - **Data:** every labeled corpus in `data/` except the frozen holdout, plus the synthetic scams at half
   weight, plus reviewer decisions: `python export_labeled.py --db jobs.db -o labeled.jsonl`, then
   `train_model --extra labeled.jsonl`. Near-copies of the same template share one example's weight.
+- **Explanations:** a finding names the rules, phrases and traits that pushed the score up; the many tiny word-piece
+  contributions are rolled into one line, "spelling of the words".
 
 ## What it is allowed to do
 
@@ -45,8 +58,8 @@ it writes a candidate only if all of these hold:
 2. There are no new false alarms: no legit listing the rules leave alone gets flagged, on the holdout or on
    the hard-legit set (`data/stress_legit.jsonl`, also never trained on).
 
-The threshold comes from cross-validation on the training rows, never below 0.5. Every run writes
-`models/TRAINING_REPORT.md`.
+The threshold comes from cross-validation on the training rows: the lowest value that flags no rules-quiet legit row, plus a
+0.1 margin because those rows are few, and never below 0.5. Every run writes `models/TRAINING_REPORT.md`.
 
 ## How it keeps learning (learning.py)
 
@@ -117,23 +130,55 @@ and writes `models/REDTEAM_REPORT.md`. The variants in `data/redteam_eval.jsonl`
 never trained on. First run: leetspeak and zero-width tricks are all still caught; removing dollar amounts and
 "every 7 days" instead of "weekly" slip past rules that catch the original.
 
-## Status (Sept 30, 2026): shipped, version in models/scam_model.json
+## Template memory (memory.py): learning in minutes, not months
 
-| Run | Training rows | Holdout scams caught (rules alone: 15/28) | New false alarms | Gate |
+Retraining is monthly, but a reviewer's decision protects the next student at once. Every scam a reviewer confirms is
+kept as a sketch of its wording (128 hashed word-trigrams; the text itself is not stored). A new check whose wording
+matches a remembered scam at 60% or more gets `confirmed_scam_template` (warning, 20 points: sent to a person), and at
+90% or more `confirmed_scam_copy` (critical, 30 points). A "legit" label or an undo on the same text forgets it, so a
+mistaken label cannot keep flagging real listings. The store is `learning/templates.jsonl` next to the database
+(`SCAM_MEMORY_PATH`), and the identifier memory in `defense.py` works the same way for emails, numbers and wallets.
+
+## Drift (drift.py): noticing when the world moved
+
+For every listing check the site records the model's probability and the share of the text's words the model has
+never seen (novelty), never the text. The model file carries the same two distributions over its training rows
+(`drift_ref`, out-of-fold). Each week's traffic is compared with them as a Population Stability Index; a PSI of 0.25
+or more, or mean novelty 15 points above training, raises a drift alert on `/admin/intel`, shows on `/admin/model`,
+and brings the next retrain forward (`learning.due_detail`, trigger `drift`, still subject to the minimum gap and
+`RETRAIN_MIN_NEW` new labels). Drift never ships a model by itself; the release gate still decides.
+
+## From model to rules
+
+Every training run ends with a "Learned, not yet a rule" table: wording the model weighs toward scam that no rule fires
+on by itself, with how many labeled scams and legit rows contain it. `train_model --propose proposed.json` writes those
+as a rulepack fragment with status `proposed` (inert), for the same review and regression gate as
+`tools/mine_candidates.py`: `python -m scam_detector.tools.regress --candidate proposed.json`, then `--promote`
+after a person marks each rule reviewed. The model finds the wording; a person decides what becomes a rule.
+
+## Status (Oct 22, 2026): shipped, version in models/scam_model.json
+
+| Run | Training rows | Holdout scams caught (rules alone: 17/28) | New false alarms | Gate |
 |---|---|---|---|---|
 | 1 | 115 | 13/14 on the Sept holdout | camp counselor job | refused |
 | 2 | 207 (+ October field batch) | 19/28 | none | shipped |
-| 3 | 306 (+ 99 LinkedIn/Indeed/ZipRecruiter/Glassdoor listings) | 19/28 | none | **shipped (current)** |
+| 3 | 306 (+ 99 LinkedIn/Indeed/ZipRecruiter/Glassdoor listings) | 19/28 | none | shipped |
+| 4 | 306 + 528 adversarial copies, format 2 | **21/28** | none | **shipped (current)** |
 
 - **Run 1** had learned "weekly pay alone = scam". It was fixed with 29 real weekly-pay jobs; see
   `data/FIELD_TEST_2026_10.md`.
 - **Run 3** first raised its threshold to 0.90 and caught fewer scams, so the gate refused it. The cause
   was a real rule bug: `personal_channel` fired on an Indeed employer's anti-scam disclaimer, and the
   model learned to distrust the rule. After the rule fix (see `data/BOARDS_2026_10.md`) it passed at
-  threshold 0.70. Cross-validation over 306 rows: 73/88 scams, with the only legit flag coming from the
-  rules.
+  threshold 0.70.
+- **Run 4** (format 2) was first refused: at the lowest cross-validated threshold (0.68) it flagged the camp counselor
+  job in the hard-legit set, which the gate exists to catch. The threshold now carries a 0.1 margin above the lowest
+  safe value (0.73); at that setting it catches all 14 September holdout scams and 7/14 October ones, with no new false
+  alarm. In grouped cross-validation the shape and word-piece features lifted the model-only catches from 7 to 16 of
+  the 88 training scams, and red-team variants caught from 418 to 477 of 528. Red-team on the holdouts: originals
+  caught 26/33 (was 24/33); rewrites 25 to 27/33 per trick (was 24 to 25).
 
-Where the gain comes from: mostly learned weights on the rules. Combinations of weak signals that add up to
-less than the rules' review threshold are still scams. The phrase features count for little until there
+Where the gain comes from: learned weights on the rules, and now the shape of the text. Combinations of weak signals
+that add up to less than the rules' review threshold are still scams. The phrase features count for little until there
 are a few hundred more scam rows. Live job boards yield almost no scams (they're removed fast), so
 reviewer decisions from the board and scam archives stay the main scam sources.

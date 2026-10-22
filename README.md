@@ -26,7 +26,9 @@ that triggered it.
 
 `scam_detector/` is the full engine the browser page is ported from. It covers
 the rules, the scorer, lead-gen detection, enrichment (domain age, MX records,
-pay vs. BLS medians, link structure), the learned second-look model and an HTTP
+pay vs. BLS medians, link structure), the learned second-look model (rules,
+wording, spelling and the shape of the text; adversarially trained; see
+`scam_detector/MODEL.md`), a template memory of confirmed scams, and an HTTP
 API.
 
 ```bash
