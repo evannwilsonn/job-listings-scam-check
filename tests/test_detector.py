@@ -84,3 +84,27 @@ def test_weekly_stipend_live_in_guard():
     # a remote mention anywhere cancels the guard, so remote scams can't borrow camp wording
     assert "weekly_stipend" in ids("Remote assistant, few hours a day. Housing provided. $500 weekly.")
     assert "weekly_stipend" in ids("Personal assistant needed, $450 weekly, flexible hours.")
+
+
+def test_scammer_respellings_fold_to_plain_words():
+    from scam_detector.rules import normalize
+    t = normalize("Deposit the cheque, reply on whats app or T-gram, paid in reward cards via Z-pay.")
+    for word in ("check", "whatsapp", "telegram", "gift card", "zelle"):
+        assert word in t
+    # ambiguous spellings are left alone
+    assert "WA" in normalize("Seattle, WA 98101")
+
+
+def test_weekly_pay_few_hours_without_amount():
+    from scam_detector.rules import run_text_rules
+    ids = lambda t: [f.rule_id for f in run_text_rules(t)]
+    assert "weekly_pay_few_hours" in ids("You will be paid weekly for 1-2 hrs a day, 3 days a week.")
+    assert "weekly_pay_few_hours" not in ids("Paid weekly. Shifts are 8 hours a day.")
+    assert "weekly_pay_few_hours" not in ids("Summer camp: 3 hours a day of swim lessons, paid weekly, room and board included.")
+
+
+def test_remote_weekly_pay_is_a_light_signal():
+    from scam_detector.rules import run_text_rules
+    f = {x.rule_id: x for x in run_text_rules("Work remotely and get paid weekly. Flexible part-time role for students.")}
+    assert "remote_weekly_pay" in f and f["remote_weekly_pay"].weight <= 10
+    assert "remote_weekly_pay" not in {x.rule_id for x in run_text_rules("On-site warehouse role, paid weekly.")}

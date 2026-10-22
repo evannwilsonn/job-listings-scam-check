@@ -31,10 +31,22 @@ function createEngine(RULEPACK) {
   const LEET = /(?<=[a-z])[@$0134](?=[a-z])/gi;
   const LEET_MAP = {"@":"a","$":"s","0":"o","1":"i","3":"e","4":"a"};
   const MAX_TEXT = 20000;
+  // Scammer respellings folded to the plain word before any rule runs (mirror of rules._ALIASES).
+  const ALIASES = [
+    [/\bcheques?\b/gi, "check"],
+    [/\b(?:payment|funds?)\s+(?:document|instrument)s?\b/gi, "check"],
+    [/\bwhats[\s\-]+app\b|\bthe\s+green\s+(?:chat\s+)?app\b/gi, "whatsapp"],
+    [/\btele[\s\-]+gram\b|\bt-gram\b|\bthe\s+blue\s+(?:chat\s+)?app\b/gi, "telegram"],
+    [/\bz-?pay\b|\bbank\s+app\s+transfer\b/gi, "zelle"],
+    [/\b(?:reward|e-?gift)\s+cards?\b|\bstore\s+vouchers?\b/gi, "gift card"],
+    [/\bmobile-load\b|\bcash\s+in\b(?=\s+(?:the|this|it|your|a)\b)/gi, "deposit"],
+    [/\bdigital\s+coins?\b/gi, "bitcoin"],
+  ];
   function normalize(text) {
     text = (text || "").normalize("NFKC").replace(ZERO_WIDTH, "").replace(HOMO_RX, c => HOMO[c]);
     text = text.replace(SPACED, m => m.replace(/[ .\-_*]/g, ""));
     text = text.replace(LEET, m => LEET_MAP[m]);
+    for (const [rx, plain] of ALIASES) text = text.replace(rx, plain);
     return text.slice(0, MAX_TEXT);
   }
 

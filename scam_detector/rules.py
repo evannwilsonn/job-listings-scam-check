@@ -63,6 +63,19 @@ _HOMOGLYPHS = str.maketrans({
 _SPACED_LETTERS = re.compile(r"(?<![a-z0-9])(?:[a-z][ .\-_*]){4,}[a-z](?![a-z0-9])", re.IGNORECASE)
 _LEET_INSIDE_WORD = re.compile(r"(?<=[a-z])[@$0134](?=[a-z])", re.IGNORECASE)
 _LEET_MAP = {"@": "a", "$": "s", "0": "o", "1": "i", "3": "e", "4": "a"}
+# Respellings scammers use so a keyword filter misses the word (red-team, Oct 2026: on the training scams these swaps
+# undid off_platform, fake_check_funds and money_mule). Folded to the plain word before any rule runs. Only spellings with
+# one reading: "WA" (Washington) and "put in" are left alone.
+_ALIASES = [(re.compile(rx, re.IGNORECASE), plain) for rx, plain in (
+    (r"\bcheques?\b", "check"),
+    (r"\b(?:payment|funds?)\s+(?:document|instrument)s?\b", "check"),
+    (r"\bwhats[\s\-]+app\b|\bthe\s+green\s+(?:chat\s+)?app\b", "whatsapp"),
+    (r"\btele[\s\-]+gram\b|\bt-gram\b|\bthe\s+blue\s+(?:chat\s+)?app\b", "telegram"),
+    (r"\bz-?pay\b|\bbank\s+app\s+transfer\b", "zelle"),
+    (r"\b(?:reward|e-?gift)\s+cards?\b|\bstore\s+vouchers?\b", "gift card"),
+    (r"\bmobile-load\b|\bcash\s+in\b(?=\s+(?:the|this|it|your|a)\b)", "deposit"),
+    (r"\bdigital\s+coins?\b", "bitcoin"),
+)]
 
 
 def normalize(text: str) -> str:
@@ -71,6 +84,8 @@ def normalize(text: str) -> str:
     text = text.translate(_ZERO_WIDTH).translate(_HOMOGLYPHS)
     text = _SPACED_LETTERS.sub(lambda m: re.sub(r"[ .\-_*]", "", m.group(0)), text)
     text = _LEET_INSIDE_WORD.sub(lambda m: _LEET_MAP[m.group(0)], text)
+    for rx, plain in _ALIASES:
+        text = rx.sub(plain, text)
     return text[:MAX_TEXT]
 
 

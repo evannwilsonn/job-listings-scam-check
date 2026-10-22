@@ -131,6 +131,14 @@ and writes `models/REDTEAM_REPORT.md`. The variants in `data/redteam_eval.jsonl`
 never trained on. First run: leetspeak and zero-width tricks are all still caught; removing dollar amounts and
 "every 7 days" instead of "weekly" slip past rules that catch the original.
 
+Oct 22, 2026: the same tricks were run over the *training* scams (`runs/rt_train.py` on the private data), so the fixes
+never read the holdout seeds. Two fixes came out of it. The normalizer now folds respellings with a single reading
+(`cheque`, `whats app`, `tele gram`/`T-gram`, `Z-pay`, `reward card`, `digital coin`; not `WA` or `put in`), and two
+rules cover pay with the amount removed: `weekly_pay_few_hours` (weekly pay plus an hour or two a day) and
+`remote_weekly_pay` (a 10-point note: remote work paid by the week). On the training scams, rewrites lost to synonyms
+fell from 36 to 26 of about 285 and to dollar removal from 70 to 45. On the holdout red-team at the original seed
+(334574230): originals 26 to 27 of 33, no-dollar-amounts 25 to 27, synonyms unchanged at 25.
+
 ## Template memory (memory.py): learning in minutes, not months
 
 Retraining is monthly, but a reviewer's decision protects the next student at once. Every scam a reviewer confirms is
