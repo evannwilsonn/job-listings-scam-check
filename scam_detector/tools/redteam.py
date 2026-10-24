@@ -88,9 +88,9 @@ def offline_variants(row: dict, rng: random.Random) -> list[dict]:
 
 def ai_variants(row: dict, n: int) -> list[dict]:
     try:
-        import ai                               # NoleCareerShield's AI helper; not part of this standalone repo
+        import ai                               # the board app's AI helper; not part of this standalone repo
     except ImportError:
-        print("--ai needs NoleCareerShield's ai.py; skipping AI rewrites", file=sys.stderr)
+        print("--ai needs the board app's ai.py; skipping AI rewrites", file=sys.stderr)
         return []
     schema = {"type": "object", "properties": {"variants": {"type": "array", "items": {"type": "string"}, "maxItems": n}},
               "required": ["variants"]}

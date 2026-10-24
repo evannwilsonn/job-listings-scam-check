@@ -1,4 +1,4 @@
-# Job Scam Check
+# LureCheck
 
 Paste a job posting or a recruiter's message and see whether it matches known
 job-scam patterns. Open `index.html` in any browser (or serve it with GitHub
@@ -21,6 +21,17 @@ The checker folds look-alike tricks (`T e l e g r a m`, `wh@tsapp`, hidden
 characters) before matching. It also skips safe phrasing like "we will never ask
 for a fee" and "SSN for payroll upon hire". Every warning shows the exact words
 that triggered it.
+
+**The learned second look runs in the page too.** When the rules aren't sure, the
+same model the Python engine uses (`scam_detector/models/scam_model.json`) reads
+the text again. If it rates the text likely to be a scam, the result moves up to
+"Be careful" with the wording that drove it. It never adds points or calls
+anything a scam on its own.
+
+The page is set up for one school (FSU by default) for its look-alike and
+spoofing checks. Another school's copy sets `window.LURECHECK_SCHOOL` before
+the detector script, for example
+`{short: "UF", name: "University of Florida", domain: "ufl.edu", lookalikes: ["ufl", "gators"], career: "UF Career Connections Center"}`.
 
 ## The Python detector
 
@@ -74,10 +85,24 @@ python tools/parity.py --show fake_check_mule
 Message-mode checks on the page (sender and link findings) have no Python twin
 yet, so they are browser-only and sit outside the parity gate.
 
-## Where the rules come from
+## Keeping the page in step with the engine
 
-The rules and checking code are the same ones the NoleCareerShield job board
-uses. The version shown in the page header is the rulepack it was built from.
+The page carries its own copy of the rulepack and the model. `tools/build_web.py`
+assembles `index.html` from `web/page.html`, `web/engine.js`, the rulepack and the
+model (`scripts/build_page.py` is an alias for it). After changing a rule,
+the engine or the page, or retraining, run:
+
+```bash
+python tools/build_web.py
+```
+
+The page header and footer show the rulepack and model versions it is running.
+`tests/test_page.py` fails if the page's copy is out of date, if its JavaScript
+model gives a different score from `ml.py`, or if its rules fire differently
+from `rules.py` (the last two run the page's script in Node). CI runs the whole
+suite on every push and pull request.
+
+The rules and checking code are the same ones the LureCheck review board uses.
 
 ## Limits
 

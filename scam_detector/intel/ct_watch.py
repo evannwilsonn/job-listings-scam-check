@@ -45,7 +45,7 @@ def crtsh_url(term: str) -> str:
 def _default_fetch(url: str) -> Tuple[int, str]:
     import httpx
     with httpx.Client(timeout=TIMEOUT, follow_redirects=False,
-                      headers={"User-Agent": "NoleCareerShield-ct-watch/1.0"}) as c:
+                      headers={"User-Agent": "LureCheck-ct-watch/1.0"}) as c:
         r = c.get(url)
         return r.status_code, r.text
 
