@@ -32,7 +32,15 @@
 {"id": "personal_channel_pii", "title": "", "description": "Reply from your personal email, not your school email, and text your full name to the number below. Include your student ID number and date of birth so we can set you up.", "company": "", "urls": []}
 {"id": "startup_cost_pitch", "title": "", "description": "There is a startup cost of $8 out of pocket to get started, then you earn as you go.", "company": "", "urls": []}
 {"id": "weekly_pay_assistant_no_amount", "title": "Personal Assistant", "description": "Personal assistant needed to help with errands and light admin, you will get paid weekly; flexible, remote, part-time.", "company": "", "urls": []}
+{"id": "live_in_camp_stipend", "title": "Summer Camp Counselor", "company": "Lakeside Camp", "description": "Work with campers ages 8 to 14. Room and board included. $450 weekly stipend for the 9-week season.", "urls": []}
+{"id": "live_in_remote_cancels", "title": "Assistant", "company": "", "description": "Remote assistant needed, a few hours a day. Housing provided for travel. $500 weekly.", "urls": []}
+{"id": "live_in_americorps", "title": "Conservation Crew Member", "company": "", "description": "AmeriCorps crew. $380 per week living allowance plus an education award.", "urls": []}
 {"id": "tuition_reimbursement_benefit", "title": "Sales Development Representative", "description": "Benefits include health insurance, 401(k), tuition reimbursement, certification support and paid time off.", "company": "Acme Security", "urls": []}
 {"id": "tuition_for_course_fee", "title": "Data Entry", "description": "You must pay the tuition for the certification course before you start.", "company": "", "urls": []}
 {"id": "fintech_payment_vehicles", "title": "Fraud Investigator", "description": "Investigate fraud across payment vehicles including ACH, debit card, cryptocurrency and more.", "company": "Acme Pay", "urls": []}
 {"id": "payment_method_usdt", "title": "Assistant", "description": "Your payment method will be USDT, sent every Friday.", "company": "", "urls": []}
+{"id": "alias_cheque_whats_app", "title": "Assistant", "company": "", "description": "Deposit the cheque we mail you, keep your pay and send the rest to our vendor. Reply on whats app to start.", "urls": []}
+{"id": "alias_tgram_reward_cards", "title": "Remote helper", "company": "", "description": "Message our manager on T-gram. Salary is paid in reward cards every Friday.", "urls": []}
+{"id": "weekly_pay_no_amount", "title": "Personal Assistant", "company": "", "description": "Weekly pay. Flexible schedule, only 1-2 hrs a day from home. Interview by text.", "urls": []}
+{"id": "weekly_pay_long_shifts_legit", "title": "Warehouse Associate", "company": "Acme Logistics", "description": "Paid weekly. Shifts are 8 hours a day, Monday to Friday. $17.50 per hour.", "urls": []}
+{"id": "remote_weekly_pay_no_amount", "title": "Research Assistant", "company": "", "description": "This is a remote position. You will work from home and get paid weekly. Send your CV to apply.", "urls": []}
