@@ -1,5 +1,5 @@
 {
- "version": "2026.10.03.1",
+ "version": "2026.10.22.2",
  "rules": [
   {
    "id": "advance_fee",
@@ -31,7 +31,7 @@
     "training with a fee"
    ],
    "patterns": [
-    "\\b(?:fees?|tuition|charges?)\\b[^.\\n]{0,40}\\b(?:training|course|program|certification|onboarding|registration|processing|kit|equipment|softwares?|laptop|visa)\\b",
+    "\\b(?:fees?|tuition(?!\\s+(?:reimbursement|assistance|support|benefits?))|charges?)\\b[^.\\n]{0,40}\\b(?:training|course|program|certification|onboarding|registration|processing|kit|equipment|softwares?|laptop|visa)\\b",
     "\\b(?:training|course|program|certification|onboarding|registration|application|processing|visa|equipment|software|kit)\\s+(?:fees?|charges?|tuition|costs?)\\b",
     "\\$\\s?\\d[\\d,]*(?:\\.\\d\\d)?\\s+(?:paid\\s+)?(?:certification|training|course|program|mentorship|kit|software|equipment)\\b",
     "\\b(?:must|need to|have to|required to|first)\\b[^.\\n]{0,30}\\b(?:obtain|purchase|buy|pay(?: for)?)\\b[^.\\n]{0,30}\\$\\s?\\d[\\d,]*[^.\\n]{0,20}\\b(?:certification|training|course|program|onboarding|software|equipment|vendor|kit|fee)\\b",
@@ -143,7 +143,7 @@
    "phrases": [],
    "patterns": [
     "\\b(?:send|sent|deposit|transfer|buy|purchase|codes?|top\\s?up|recharge|wire|withdraw\\w*|reimburse\\w*|pay\\s+(?:for|us|them|the|a|your|back))\\b[^.\\n]{0,40}\\b(?:bitcoin|btc|usdt|usdc|crypto(?:currency)?|gift\\s+cards?|apple\\s+cards?|itunes|zelle|cash\\s?app|venmo|western\\s+union|moneygram)\\b",
-    "\\b(?:paid|payment|payments|salary|wages?|pay)\\b[^.\\n]{0,40}\\b(?:bitcoin|btc|usdt|usdc|crypto(?:currency)?|gift\\s+cards?|apple\\s+cards?|itunes|western\\s+union|moneygram)\\b",
+    "\\b(?:paid|payment|payments|salary|wages?|pay)\\b(?!\\s+(?:vehicles?|rails?|processing|processors?|networks?|infrastructure|products?|platforms?|industry)\\b)[^.\\n]{0,40}\\b(?:bitcoin|btc|usdt|usdc|crypto(?:currency)?|gift\\s+cards?|apple\\s+cards?|itunes|western\\s+union|moneygram)\\b",
     "\\b(?:bitcoin|btc|usdt|usdc|crypto(?:currency)?|gift\\s+cards?|apple\\s+cards?|itunes|western\\s+union|moneygram)\\b[^.\\n]{0,25}\\b(?:paid|payment|payments|salary|deposit|transfer|codes?)\\b"
    ],
    "guards": [
@@ -511,11 +511,65 @@
     "\\bweekly\\s+(?:pay|salary|remuneration|allowance|wages?|compensation|stipend)\\s*(?:of|:|is)?\\s*(?:up\\s+to\\s+)?\\$\\s?\\d{3}\\b",
     "\\b(?:earn|make|get\\s+paid)\\s+(?:up\\s+to\\s+)?\\$\\s?\\d{3}(?:\\.\\d\\d)?\\s*(?:\\(?usd\\)?\\s*)?(?:weekly|every\\s+(?:7|seven)\\s+days)\\b"
    ],
-   "guards": [],
+   "guards": [
+    "live_in"
+   ],
    "min_matches": 1,
    "bonus": 3,
    "added": "2026-09-30",
-   "source": "field test Sept 2026 (Evan's labeled reasons)"
+   "source": "field test Sept 2026 (Evan's labeled reasons)",
+   "history": [
+    {
+     "date": "2026-10-22",
+     "change": "added guard live_in",
+     "why": "10 of 11 legit training rows that tripped this rule were on-site camp, outdoor-education, farm or AmeriCorps stipends; 0 of 28 training scams named that context. The model had learned weekly_stipend as a strong scam signal and flagged the hard-legit camp counselor."
+    }
+   ]
+  },
+  {
+   "id": "weekly_pay_few_hours",
+   "status": "active",
+   "severity": "warning",
+   "weight": 15,
+   "title": "Weekly pay for a few hours, with no amount",
+   "why": "The weekly-stipend scam with the dollar figure taken out: paid every week for an hour or two a day. Real part-time jobs name an hourly rate.",
+   "phrases": [],
+   "patterns": [
+    "\\b(?:pay|paid|payments?|salary|stipend|compensation)\\b[^.\\n]{0,30}(?:weekly|(?:per|each|every)\\s+week|every\\s+(?:7|seven)\\s+days)[\\s\\S]{0,200}?\\b(?:[1-4]|one|two|three|few)(?:\\s*(?:-|to)\\s*[2-5])?\\s*(?:hrs?|hours?)\\s+(?:a|per|each)\\s+day\\b",
+    "\\bweekly\\s+(?:pay|salary|stipend|compensation|payments?)\\b[\\s\\S]{0,200}?\\b(?:[1-4]|one|two|three|few)(?:\\s*(?:-|to)\\s*[2-5])?\\s*(?:hrs?|hours?)\\s+(?:a|per|each)\\s+day\\b",
+    "\\b(?:[1-4]|one|two|three|few)(?:\\s*(?:-|to)\\s*[2-5])?\\s*(?:hrs?|hours?)\\s+(?:a|per|each)\\s+day\\b[\\s\\S]{0,200}?\\b(?:pay|paid|payments?|salary|stipend|compensation)\\b[^.\\n]{0,30}(?:weekly|(?:per|each|every)\\s+week|every\\s+(?:7|seven)\\s+days)",
+    "\\b(?:[1-4]|one|two|three|few)(?:\\s*(?:-|to)\\s*[2-5])?\\s*(?:hrs?|hours?)\\s+(?:a|per|each)\\s+day\\b[\\s\\S]{0,200}?\\bweekly\\s+(?:pay|salary|stipend|compensation|payments?)\\b"
+   ],
+   "guards": [
+    "negation",
+    "live_in"
+   ],
+   "min_matches": 1,
+   "bonus": 0,
+   "added": "2026-10-22",
+   "source": "red-team on training scams, Oct 2026: removing dollar amounts undid weekly_stipend in 70 of 280 rewrites"
+  },
+  {
+   "id": "remote_weekly_pay",
+   "status": "active",
+   "severity": "note",
+   "weight": 10,
+   "title": "Remote work paid by the week",
+   "why": "Remote 'assistant' scams promise to pay every week, often with no amount at all. Some real remote jobs pay weekly too, so this only adds weight to other signs.",
+   "phrases": [],
+   "patterns": [
+    "\\b(?:remote(?:ly)?|from\\s+home|home-based|work\\s+from\\s+anywhere|online-based|virtual(?:ly)?)\\b[\\s\\S]{0,250}?\\b(?:paid|pay|payments?|salary|stipend|compensation|earn)\\b[^.\\n]{0,30}(?:weekly|(?:per|each|every)\\s+week|every\\s+(?:7|seven)\\s+days)",
+    "\\b(?:remote(?:ly)?|from\\s+home|home-based|work\\s+from\\s+anywhere|online-based|virtual(?:ly)?)\\b[\\s\\S]{0,250}?\\bweekly\\s+(?:pay|salary|stipend|compensation|payments?)\\b",
+    "\\b(?:paid|pay|payments?|salary|stipend|compensation|earn)\\b[^.\\n]{0,30}(?:weekly|(?:per|each|every)\\s+week|every\\s+(?:7|seven)\\s+days)[\\s\\S]{0,250}?\\b(?:remote(?:ly)?|from\\s+home|home-based|work\\s+from\\s+anywhere|online-based|virtual(?:ly)?)\\b",
+    "\\bweekly\\s+(?:pay|salary|stipend|compensation|payments?)\\b[\\s\\S]{0,250}?\\b(?:remote(?:ly)?|from\\s+home|home-based|work\\s+from\\s+anywhere|online-based|virtual(?:ly)?)\\b"
+   ],
+   "guards": [
+    "negation"
+   ],
+   "min_matches": 1,
+   "bonus": 0,
+   "added": "2026-10-22",
+   "source": "red-team on training scams, Oct 2026: with dollar amounts removed, 'work remotely and get paid weekly' was all that was left"
   },
   {
    "id": "personal_channel",

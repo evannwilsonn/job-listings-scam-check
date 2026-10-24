@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Scam Check</title>
+<meta name="description" content="Paste a job posting or recruiter message and see whether it matches known job-scam patterns. Runs entirely in your browser.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,500..800,0..100,0..1&family=Graduate&family=Martian+Mono:wdth,wght@75..112.5,400..700&family=Plus+Jakarta+Sans:wght@400..700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#050A14;--panel:#08111F;--panel2:#0D1A2E;--line:#1C2B44;--line2:#2A3D5C;
+  --text:#E8ECF4;--soft:#97A3B8;--dim:#6B778C;
+  --gold:#E2BE6A;--gold-hi:#FBE7AE;--gold-lo:#C99B45;
+  --foil:linear-gradient(135deg,#FBE7AE 0%,#E2BE6A 45%,#C99B45 100%);
+  --garnet:#8C2F45;--crimson:#E5484D;--amber:#E0A23A;--green:#3FB27F;
+  --mono:'Martian Mono',ui-monospace,monospace;--sans:'Plus Jakarta Sans',system-ui,sans-serif;
+  --display:'Fraunces',Georgia,serif;--varsity:'Graduate','Rockwell',serif;
+}
+*{box-sizing:border-box;margin:0}
+html{background:var(--bg)}
+body{font-family:var(--sans);font-variation-settings:'wdth' 82;background:var(--bg);color:var(--text);line-height:1.6;min-height:100vh;
+  background-image:radial-gradient(1200px 500px at 50% -200px,rgba(226,190,106,.10),transparent 70%)}
+.wrap{max-width:760px;margin:0 auto;padding:40px 16px 80px}
+header{display:flex;align-items:center;gap:12px;margin-bottom:28px}
+.brand{white-space:nowrap;font-family:var(--display);font-variation-settings:'SOFT' 60,'WONK' 1;font-size:22px;font-weight:700;letter-spacing:.01em}
+.brand b{background:var(--foil);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tag{margin-left:auto;font:400 11px var(--varsity);letter-spacing:.1em;text-transform:uppercase;color:var(--gold);
+  border:1px solid rgba(226,190,106,.35);border-radius:999px;padding:4px 10px}
+h1{font-family:var(--display);font-variation-settings:'SOFT' 60,'WONK' 1;font-size:clamp(30px,6vw,42px);line-height:1.15;margin-bottom:10px}
+.lede{color:var(--soft);max-width:58ch;margin-bottom:28px}
+.card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:14px;padding:20px}
+.tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.tab{font:600 13px var(--sans);color:var(--soft);background:transparent;border:1px solid var(--line2);border-radius:999px;padding:7px 14px;cursor:pointer}
+.tab[aria-selected=true]{color:#0A0F1A;background:var(--foil);border-color:transparent}
+label{display:block;font-weight:600;font-size:14px;margin:14px 0 6px}
+label:first-of-type{margin-top:0}
+.hint{color:var(--dim);font-weight:400;font-size:13px}
+textarea,input{width:100%;background:#050C18;border:1px solid var(--line2);border-radius:8px;color:var(--text);
+  font:14px/1.55 var(--sans);padding:11px 13px}
+textarea{min-height:180px;resize:vertical}
+textarea:focus,input:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px rgba(226,190,106,.15)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:560px){.row{grid-template-columns:1fr}}
+.actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
+button.go{background:var(--foil);color:#0A0F1A;border:0;border-radius:8px;padding:12px 22px;font:700 15px var(--sans);cursor:pointer}
+button.go:disabled{opacity:.45;cursor:default}
+button.ghost{background:none;border:1px solid var(--line2);border-radius:8px;color:var(--soft);padding:11px 16px;font:500 14px var(--sans);cursor:pointer}
+button.ghost:hover{border-color:var(--gold);color:var(--text)}
+.private{margin-top:12px;color:var(--dim);font-size:12.5px}
+
+#result{margin-top:24px}
+.verdict{display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center}
+@media(max-width:560px){.verdict{grid-template-columns:1fr;justify-items:start}}
+.scan{position:relative;width:132px;height:132px}
+.scan svg{width:100%;height:100%;transform:rotate(-90deg)}
+.scan .num{position:absolute;inset:0;display:grid;place-items:center;text-align:center;font:700 30px var(--mono);font-variation-settings:'wdth' 112.5}
+.scan .num small{display:block;font:600 10px var(--mono);letter-spacing:.14em;color:var(--dim);margin-top:-6px}
+.lvl{font:600 11px var(--mono);letter-spacing:.14em;text-transform:uppercase}
+.vt{font-family:var(--display);font-variation-settings:'SOFT' 60,'WONK' 1;font-size:26px;line-height:1.2;margin:4px 0 6px}
+.advice{color:var(--soft)}
+.k-ok{--c:var(--green)}.k-caution{--c:var(--amber)}.k-warn{--c:#F07A3A}.k-bad{--c:var(--crimson)}
+.lvl,.num{color:var(--c)}
+.verdict.card{border-color:color-mix(in srgb,var(--c) 45%,var(--line))}
+h2{font:400 12.5px var(--varsity);letter-spacing:.12em;text-transform:uppercase;color:var(--gold);margin:26px 0 10px}
+.f{border:1px solid var(--line);border-left:3px solid var(--fc);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:var(--panel)}
+.f.critical{--fc:var(--crimson)}.f.warning{--fc:var(--amber)}.f.note{--fc:var(--dim)}
+.f .t{display:flex;gap:10px;align-items:baseline;justify-content:space-between;font-weight:600}
+.f .sev{font:600 10.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--fc);white-space:nowrap}
+.f p{color:var(--soft);font-size:14px;margin-top:4px}
+.f code{display:inline-block;font:12.5px var(--mono);color:var(--gold-hi);background:rgba(226,190,106,.08);
+  border:1px solid rgba(226,190,106,.2);border-radius:5px;padding:1px 6px;margin:6px 6px 0 0;word-break:break-word}
+.lg{border-color:rgba(224,162,58,.45)}
+.lg ul,.steps{padding-left:20px;color:var(--soft);font-size:14px}
+.lg li,.steps li{margin-top:4px}
+.empty{color:var(--soft)}
+footer{margin-top:44px;color:var(--dim);font-size:12.5px;border-top:1px solid var(--line);padding-top:16px}
+footer a{color:var(--gold)}
+.mk-card{margin-top:6px}
+.mk-legend{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 12px;font:500 11px/1 var(--mono, monospace);letter-spacing:.12em;text-transform:uppercase}
+.mk-legend span{padding:6px 9px;border-radius:6px}
+.mk-text{white-space:pre-wrap;word-break:break-word;font-size:15px;line-height:1.75}
+.mk-red,.mk-amb,.mk-grn{color:inherit;border-radius:4px;padding:1px 3px}
+.mk-red{background:rgba(229,48,79,.2);box-shadow:inset 0 -2px #E5304F;color:#FFB3BF}
+.mk-amb{background:rgba(232,162,26,.18);box-shadow:inset 0 -2px #E8A21A;color:#FFD98A}
+.mk-grn{background:rgba(46,204,113,.16);box-shadow:inset 0 -2px #2ECC71;color:#9EF0C2}
+.mk-cleared{list-style:none;margin:16px 0 8px;padding:0;display:grid;gap:10px}
+.mk-cleared li{display:grid;gap:4px;font-size:14px;opacity:.9}
+.mk-cleared b{color:#9EF0C2}
+.mk-note{font-size:12.5px;opacity:.6;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <svg width="34" height="34" viewBox="0 0 40 40" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FBE7AE"/><stop offset=".45" stop-color="#E2BE6A"/><stop offset="1" stop-color="#C99B45"/></linearGradient></defs><path d="M20 3 L34 8 V19 C34 28 28 34 20 37 C12 34 6 28 6 19 V8 Z" fill="#782F40"/><path d="M20 11 L22.4 17.6 L29 20 L22.4 22.4 L20 29 L17.6 22.4 L11 20 L17.6 17.6 Z" fill="url(#g)"/></svg>
+    <span class="brand">Job Scam <b>Check</b></span>
+    <span class="tag">Rules {{RULEPACK_VERSION}}</span>
+  </header>
+
+  <h1>Is this job real?</h1>
+  <p class="lede">Paste a job posting or a recruiter's message. It's checked against known job-scam patterns (fees to start, fake checks, money-mule work, gift-card pay, chat-app interviews and more), and every warning shows the exact words that triggered it.</p>
+
+  <form class="card" id="form" autocomplete="off">
+    <div class="tabs" role="tablist">
+      <button type="button" class="tab" role="tab" aria-selected="true" data-mode="posting">Job posting</button>
+      <button type="button" class="tab" role="tab" aria-selected="false" data-mode="message">Message or email</button>
+    </div>
+    <div id="posting-fields">
+      <div class="row">
+        <div><label for="title">Job title <span class="hint">optional</span></label><input id="title" placeholder="Remote Data Entry Assistant"></div>
+        <div><label for="company">Company <span class="hint">optional</span></label><input id="company" placeholder="Acme Corp"></div>
+      </div>
+      <label for="url">Apply link <span class="hint">optional, not opened</span></label>
+      <input id="url" placeholder="https://…">
+    </div>
+    <div id="message-fields" hidden>
+      <label for="sender">Sender <span class="hint">optional, name and email address</span></label>
+      <input id="sender" placeholder="Jane Smith &lt;jane@example.com&gt;">
+    </div>
+    <label for="text" id="text-label">Posting text</label>
+    <textarea id="text" placeholder="Paste the full text here…"></textarea>
+    <div class="actions">
+      <button class="go" id="go" type="submit" disabled>Check it</button>
+      <button class="ghost" type="button" id="sample">Try a sample</button>
+      <button class="ghost" type="button" id="clear">Clear</button>
+    </div>
+    <p class="private">Runs entirely in your browser. Nothing you paste is sent anywhere or saved.</p>
+  </form>
+
+  <div id="result" aria-live="polite"></div>
+
+  <footer>
+    A pattern match is a reason to slow down, not proof either way. A clean result can still be a scam, so always confirm the job on the employer's own website before sharing personal details.
+    Report job scams at <a href="https://reportfraud.ftc.gov" rel="noopener">reportfraud.ftc.gov</a>.
+    Rulepack {{RULEPACK_VERSION}} · {{RULE_COUNT}} active rules.
+  </footer>
+</div>
+
+
+<script>window.NCS_RULEPACK = {{RULEPACK_JSON}};</script>
+<script>
+{{ENGINE_JS}}
+</script>
+<script>
+(function () {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  let mode = "posting";
+
+  const STEPS = [
+    ["Look the company up yourself (not through links in the message) and confirm the job is on their careers page.", "Keep the conversation on the job site or the company's own email.", "Never pay for training, equipment or a background check. Real jobs don't charge you."],
+    ["Don't click links or open attachments yet.", "Find the organization's official contact on your own and ask whether the message is real.", "Don't share your date of birth, SSN, ID or bank details."],
+    ["Don't reply with personal information, and don't click the links.", "Block the sender and report the posting to the site it came from."],
+    ["Stop replying. Don't send money, gift cards, crypto or bank details, and don't deposit any check they send.", "If you already shared banking details or deposited a check, call your bank now.", "Report it at reportfraud.ftc.gov and to the site where you found it."],
+  ];
+  const SAMPLES = {
+    posting: {title: "Remote Personal Assistant", company: "", url: "", text: "We are hiring a part-time personal assistant to work from home. You will be paid $650 weekly for 1-2 hrs a day, 3 days a week. No experience needed, you are hired immediately after a short interview on Telegram. You will receive a check to purchase office equipment from our approved vendor; deposit it and send the balance by Zelle."},
+    message: {sender: "Career Services <careerservices.dept@gmail.com>", text: "Hello Student, the department is recruiting a research assistant. Pay is $400 every 7 days and the job is flexible. Text me on WhatsApp at wa.me/10000000000 with your full name, address and bank name to get started."},
+  };
+
+  function setMode(m) {
+    mode = m;
+    document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.mode === m)));
+    $("posting-fields").hidden = m !== "posting";
+    $("message-fields").hidden = m !== "message";
+    $("text-label").textContent = m === "posting" ? "Posting text" : "Message text";
+  }
+
+  function gauge(score, key) {
+    const r = 54, c = 2 * Math.PI * r, frac = Math.max(0, Math.min(100, score)) / 100;
+    return `<div class="scan"><svg viewBox="0 0 128 128" aria-hidden="true">
+      <circle cx="64" cy="64" r="${r}" fill="none" stroke="#1C2B44" stroke-width="10"/>
+      <circle cx="64" cy="64" r="${r}" fill="none" stroke="var(--c)" stroke-width="10" stroke-linecap="round"
+        stroke-dasharray="${(c * frac).toFixed(1)} ${c.toFixed(1)}"/></svg>
+      <div class="num"><div>${score}<small>RISK</small></div></div></div>`;
+  }
+
+  function finding(f) {
+    const m = (f.matched || []).map(x => `<code>${esc(x)}</code>`).join("");
+    return `<div class="f ${esc(f.severity)}"><div class="t"><span>${esc(f.title)}</span><span class="sev">${esc(f.severity)}</span></div>
+      <p>${esc(f.why)}</p>${m ? `<div>${m}</div>` : ""}</div>`;
+  }
+
+  // The pasted text, marked up: red for critical signals, amber for warnings, green for wording ruled out by its context.
+  // Every slice of the paste goes through esc(); only fixed class names are added.
+  function wordsRx(phrase) {
+    const words = (phrase || "").match(/[\w$@.'\/%-]+/g);
+    if (!words || words.join(" ").length < 3) return null;
+    return new RegExp(words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("[\\s\\W]{0,3}"), "gi");
+  }
+  function marked(text, findings, cleared) {
+    const spans = [];
+    const add = (phrase, cls) => {
+      const rx = wordsRx(phrase); if (!rx) return false;
+      let hit = false, m;
+      while ((m = rx.exec(text))) {
+        if (!m[0]) { rx.lastIndex++; continue; }
+        const a = m.index, b = a + m[0].length;
+        if (!spans.some(([x, y]) => a < y && x < b)) { spans.push([a, b, cls]); hit = true; }
+      }
+      return hit;
+    };
+    for (const f of findings) for (const e of f.matched || []) add(e, f.severity === "critical" ? "mk-red" : "mk-amb");
+    const placed = cleared.filter(c => add(c.clause, "mk-grn"));
+    if (!spans.length) return "";
+    spans.sort((p, q) => p[0] - q[0]);
+    let out = "", at = 0;
+    for (const [a, b, cls] of spans) { out += esc(text.slice(at, a)) + `<mark class="${cls}">${esc(text.slice(a, b))}</mark>`; at = b; }
+    out += esc(text.slice(at));
+    const used = new Set(spans.map(s => s[2]));
+    const legend = [["mk-red", "Scam signal"], ["mk-amb", "Warning"], ["mk-grn", "Ruled out by context"]]
+      .filter(([c]) => used.has(c)).map(([c, t]) => `<span class="${c}">${t}</span>`).join("");
+    const greens = placed.map(c => `<li><mark class="mk-grn">\u201c${esc(c.clause.slice(0, 160))}\u201d</mark><span><b>Not counted:</b> ${esc(c.title)}. ${esc(c.why)}</span></li>`).join("");
+    return `<h2>How we read it</h2><div class="card mk-card"><p class="mk-legend">${legend}</p><div class="mk-text">${out}</div>` +
+      (greens ? `<ul class="mk-cleared">${greens}</ul><p class="mk-note">Green explains why a phrase didn't count against the message. It doesn't mean the message is safe: scammers copy reassuring lines too.</p>` : "") + `</div>`;
+  }
+
+  function run() {
+    const text = $("text").value.trim();
+    if (!text) return;
+    let r;
+    if (mode === "message") {
+      r = NCS.check(text, $("sender").value);
+    } else {
+      const url = $("url").value.trim();
+      const s = NCS.scorePosting($("title").value.trim(), text, $("company").value.trim(), url ? [url] : []);
+      const extra = NCS.linkFindings(text + (url ? "\n" + url : ""));
+      const best = new Map();
+      for (const f of s.findings.concat(extra)) if (!best.has(f.rule_id) || f.weight > best.get(f.rule_id).weight) best.set(f.rule_id, f);
+      const findings = [...best.values()].sort((a, b) => ({critical:0,warning:1,note:2}[a.severity] - {critical:0,warning:1,note:2}[b.severity]) || b.weight - a.weight);
+      const score = Math.min(100, findings.reduce((n, f) => n + f.weight, 0));
+      const crit = findings.some(f => f.severity === "critical");
+      const b = crit || score >= 65 ? "block" : score >= 35 ? "review" : score >= 15 ? "caution" : "clear";
+      let level = {clear: 0, caution: 1, review: 2, block: 3}[b];
+      if (s.lead_gen.flag && level < 1) level = 1;
+      const [key, title, advice] = NCS.LEVELS[level];
+      r = {level, key, title, advice, score, findings, lead_gen: s.lead_gen};
+    }
+    const advice = r.level === 0 ? "Nothing here matches a known scam pattern. That isn't a guarantee: confirm the employer through their own website before sharing personal details." : r.advice;
+    let html = `<div class="card verdict k-${r.key}">${gauge(r.score, r.key)}<div>
+      <div class="lvl">${r.level === 0 ? "No match" : r.findings.length + " signal" + (r.findings.length === 1 ? "" : "s") + " found"}</div>
+      <div class="vt">${esc(r.title)}</div><p class="advice">${esc(advice)}</p></div></div>`;
+    if (r.lead_gen && r.lead_gen.flag) {
+      html += `<h2>Middleman listing</h2><div class="f lg note" style="--fc:var(--amber)"><div class="t"><span>Probably not fraud, but not the employer either</span><span class="sev">${esc(r.lead_gen.level)}</span></div>
+        <p>${esc(r.lead_gen.verdict)}</p><ul>${r.lead_gen.reasons.map(x => `<li>${esc(x.reason)}</li>`).join("")}</ul></div>`;
+    }
+    if (r.findings.length) html += `<h2>What we found</h2>` + r.findings.map(finding).join("");
+    html += marked(text.slice(0, 8000), r.findings, NCS.clearedMatches(text.slice(0, 8000), r.findings));
+    html += `<h2>What to do</h2><ul class="steps">${STEPS[r.level].map(s => `<li>${esc(s)}</li>`).join("")}</ul>`;
+    $("result").innerHTML = html;
+    $("result").scrollIntoView({behavior: "smooth", block: "start"});
+  }
+
+  document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => setMode(t.dataset.mode)));
+  $("text").addEventListener("input", () => { $("go").disabled = !$("text").value.trim(); });
+  $("form").addEventListener("submit", e => { e.preventDefault(); run(); });
+  $("sample").addEventListener("click", () => {
+    const s = SAMPLES[mode];
+    for (const k of ["title", "company", "url", "sender", "text"]) if (k in s) $(k).value = s[k];
+    $("go").disabled = false; run();
+  });
+  $("clear").addEventListener("click", () => {
+    for (const k of ["title", "company", "url", "sender", "text"]) $(k).value = "";
+    $("go").disabled = true; $("result").innerHTML = "";
+  });
+})();
+
+</script>
+</body>
+</html>
