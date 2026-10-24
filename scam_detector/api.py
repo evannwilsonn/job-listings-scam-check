@@ -19,6 +19,7 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from . import ml
 from .scorer import score_posting
 from .security import enforce_rate_limit, analyze_limiter, MAX_BODY_BYTES
 
@@ -63,6 +64,8 @@ class PostingIn(BaseModel):
                               description="Full posting or recruiter message text")
     company: str = Field(default="", max_length=300, description="Claimed employer name, if given")
     run_network: bool = Field(default=True, description="Run live domain/MX lookups")
+    second_look: bool = Field(default=True, description="Add the learned model's 'worth a second look' finding "
+                                                        "(weight 0: it never changes the score or band)")
 
 
 @app.get("/health")
@@ -79,4 +82,13 @@ def analyze(posting: PostingIn, request: Request) -> dict:
         company=posting.company,
         run_network=posting.run_network,
     )
-    return result.as_dict()
+    out = result.as_dict()
+    if posting.second_look:
+        # The learned layer lives only on the server (the static page has no model). It adds a weight-0 finding when
+        # it is confident and the rules weren't; it never changes the score or band, so it stays out of the scorer
+        # and out of the Python/JS parity gate.
+        extra = ml.second_look(posting.title, posting.description, posting.company,
+                               findings=out["findings"], score=out["score"])
+        if extra:
+            out["findings"].append(extra)
+    return out

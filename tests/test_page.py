@@ -67,8 +67,9 @@ def _page_scripts() -> str:
     """The data block and the detector engine, without the page UI (which needs a DOM)."""
     html = PAGE.read_text(encoding="utf-8")
     data = re.search(r'<script id="lurecheck-data">(.*?)</script>', html, re.S).group(1)
-    engine = next(s for s in re.findall(r"<script>(.*?)</script>", html, re.S) if "root.LureCheck =" in s)
-    return data.replace("window.", "globalThis.") + "\n" + engine
+    engine = next(s for s in re.findall(r"<script>(.*?)</script>", html, re.S) if "function createEngine" in s)
+    return (data.replace("window.", "globalThis.") + "\n" + engine +
+            "\nconst LureCheck = createEngine(globalThis.LURECHECK_RULEPACK, globalThis.LURECHECK_MODEL || null);\n")
 
 
 def _run_node(cases: list[dict]) -> list[dict]:
