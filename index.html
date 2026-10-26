@@ -266,7 +266,9 @@ function createEngine(RULEPACK) {
     const perWeek = amount * (pay[2].toLowerCase().startsWith("d") ? 5 : 1);
     let hours = null, m = HOURS_DAYS.exec(text);
     if (m) hours = parseFloat(m[2]) * parseFloat(m[3]);
-    else { m = HOURS.exec(text); if (m) hours = parseFloat(m[2]) * ((m[3] || "").toLowerCase().startsWith("d") ? 5 : 1); }
+    else { m = HOURS.exec(text); if (m) { const u = (m[3] || "").toLowerCase();
+      // "8-9 hours" with no unit is a workday, not a week; short unitless ranges ("1-2 hours") stay ambiguous
+      const perDay = u.startsWith("d") || (!u && parseFloat(m[2]) >= 6); hours = parseFloat(m[2]) * (perDay ? 5 : 1); } }
     if (!hours || hours <= 0) return null;
     const rate = perWeek / hours; if (rate < 60) return null;
     const p = pay[0].trim();

@@ -36,6 +36,12 @@ def test_fintech_payment_vocabulary_is_not_crypto_pay():
     assert band("Assistant", "Your payment method will be USDT, sent every Friday.", "") == "block"
 
 
+def test_unitless_workday_hours_are_not_read_as_a_week():
+    assert band("Delivery Driver", "Starting at $125/day. Hours: 8AM until packages are delivered (typically 8-9 hours). "
+                "Paid training, company vehicle provided.", "Acme Logistics") == "clear"
+    assert band("Assistant", "You can make $650 weekly for 1-2 hours, flexible remote work.", "") != "clear"
+
+
 def test_ordinary_posting_is_clear():
     assert band("Marketing Intern", "Help plan campus events and write social posts. 15 hours a week, $16/hr. "
                 "Apply through our careers page.", "Acme") == "clear"

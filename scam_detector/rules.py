@@ -397,7 +397,10 @@ def implied_hourly_finding(text: str) -> Optional[Finding]:
     else:
         m = _HOURS.search(text)
         if m:
-            hours_week = float(m.group(2)) * (5 if (m.group(3) or "").lower().startswith("d") else 1)
+            unit = (m.group(3) or "").lower()
+            # "8-9 hours" with no unit is a workday, not a week; short unitless ranges ("1-2 hours") stay ambiguous
+            per_day = unit.startswith("d") or (not unit and float(m.group(2)) >= 6)
+            hours_week = float(m.group(2)) * (5 if per_day else 1)
     if not hours_week or hours_week <= 0:
         return None
     rate = per_week / hours_week

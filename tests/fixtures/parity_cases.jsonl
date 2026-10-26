@@ -44,3 +44,5 @@
 {"id": "weekly_pay_no_amount", "title": "Personal Assistant", "company": "", "description": "Weekly pay. Flexible schedule, only 1-2 hrs a day from home. Interview by text.", "urls": []}
 {"id": "weekly_pay_long_shifts_legit", "title": "Warehouse Associate", "company": "Acme Logistics", "description": "Paid weekly. Shifts are 8 hours a day, Monday to Friday. $17.50 per hour.", "urls": []}
 {"id": "remote_weekly_pay_no_amount", "title": "Research Assistant", "company": "", "description": "This is a remote position. You will work from home and get paid weekly. Send your CV to apply.", "urls": []}
+{"id": "unitless_workday_hours", "title": "Delivery Driver", "description": "Starting at $125/day. Hours: 8AM until packages are delivered (typically 8-9 hours). Paid training, company vehicle provided.", "company": "Acme Logistics", "urls": []}
+{"id": "unitless_short_hours_weekly_pay", "title": "Assistant", "description": "You can make $650 weekly for 1-2 hours, flexible remote work.", "company": "", "urls": []}
