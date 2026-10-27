@@ -62,7 +62,25 @@ it writes a candidate only if all of these hold:
 The threshold comes from cross-validation on the training rows: the lowest value that flags no rules-quiet legit row, plus a
 0.1 margin because those rows are few, and never below 0.5. Every run writes `models/TRAINING_REPORT.md`.
 
-## How it keeps learning (learning.py)
+## The learning loop in LureCheck (`learning.py`, `tools/learn.py`)
+
+Everything below this section first ran on the NoleCareerShield site; LureCheck runs the same loop on its own store
+(Postgres in production, files in development), with no web admin pages yet:
+
+| Step | In LureCheck |
+|---|---|
+| Labels | `tools/review_queue.py`: `confirmed` makes a scam label; `dismissed --real` makes a legit one. Nothing a student says becomes a label. |
+| Template memory | Confirming stores a sketch of the script (`templates` table); `/analyze` flags the next copy (`confirmed_scam_template` / `_copy`). `--real` forgets it. |
+| Train / holdout | Each label gets a permanent place (`labels.split`) on first use; copies of one script share the first copy's place, so a scam wave is never split. |
+| Retrain | `learn tick` (schedule it every 30 minutes) retrains monthly, early on evidence or drift, and in the fast lane within hours when new labels include a scam the detector misses. |
+| Gate | `train_model.py`'s gate, then the release gate against the active model (`learning.gate`). |
+| Release | Model files live in the `models` table so the API and the retrain job can run on different machines. Shadow, rollout to a stable slice, watch, automatic rollback (`model_release`, `release_log`). `learn release next/stop/rollback` for a person. |
+| Drift | `/analyze` records the model's score and the share of unseen words (`model_traffic`, text never stored); `learn status` compares them with the model's training reference. |
+
+Retraining needs scikit-learn and the labeled corpora (`LURECHECK_DATA`); serving needs neither. `LEARN_TRAFFIC=off`
+stops the traffic recording.
+
+## How it keeps learning on the NoleCareerShield site
 
 The loop runs on the live site. Nobody has to remember to retrain.
 

@@ -94,6 +94,12 @@ Postgres (`scam_detector/store.py`); without it they fall back to JSONL files in
 Confirming a report there also confirms its indicators and adds it to `labels` for the next retrain. Use a Neon branch to test a migration or a retrain against a copy of
 production.
 
+- The learning loop (`scam_detector/learning.py`): confirming a report adds it to the training labels and to the
+  template memory, so the next copy of that script is flagged on the next check; `review_queue --set N dismissed --real`
+  records a real job. `python -m scam_detector.tools.learn tick`, scheduled every 30 minutes where `DATABASE_URL` and
+  the labeled corpora (`LURECHECK_DATA`) are available, retrains when the evidence calls for it and moves a new model
+  through shadow, staged rollout and watch, rolling back on its own. `learn status` shows where it stands. Model files
+  live in the database (migration 003), so the API always serves the active one. See `scam_detector/MODEL.md`.
 - `POST /lookup` answers "has this phone number, email, website or wallet been confirmed as a scam?" across every
   LureCheck school, and `/analyze` adds a critical finding when a message contains one
   (`scam_detector/network.py`). Only reviewer-confirmed indicators ever match.
