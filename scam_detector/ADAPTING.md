@@ -114,6 +114,10 @@ false alarm. Three things make the loop self-improving rather than a monthly cho
 - **Drift** (`drift.py`): the model's scores and the share of words it has never seen
   are compared with its training distribution every week. A shift shows on the Intel
   page and brings the next retrain forward.
+- **Fast lane**: a confirmed scam the detector missed triggers a retrain within the
+  hour (with enough new labels), released on a shorter clock through the same gate.
+- **Reference examples for the AI**: the AI second opinion sees the closest confirmed
+  scams and real jobs, so it recognizes rewritten versions of known schemes at once.
 - **Model-driven rule proposals**: every training run lists the wording it now weighs
   toward scam that no rule covers (`models/TRAINING_REPORT.md`, "Learned, not yet a
   rule"), and `train_model --propose proposed.json` writes them as an inert rulepack
