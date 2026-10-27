@@ -21,8 +21,6 @@ from typing import List
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
-import os
-
 from . import ml
 from .conversation import analyze_thread
 from .employer import board_finding, check_job_board, verification_script
@@ -31,13 +29,13 @@ from .identity import sender_findings
 from .intel import intel_findings
 from .intel.cache import MemoryCache
 from .recovery import HAPPENED, next_step, recovery_plan
-from .reports import OUTCOMES, append_report, ftc_summary, make_report
+from .reports import OUTCOMES, ftc_summary, make_report
 from .scorer import _band, score_posting
 from .security import RateLimiter, enforce_rate_limit, analyze_limiter, MAX_BODY_BYTES
+from .store import get_store
 
 _intel_cache = MemoryCache()
 report_limiter = RateLimiter(max_attempts=10, window_seconds=600)
-REPORT_QUEUE = os.environ.get("REPORT_QUEUE_PATH", "scam_detector/data/report_queue.jsonl")
 
 app = FastAPI(title="Job Scam Detector", version="1.0")
 
@@ -179,9 +177,9 @@ def report(body: ReportIn, request: Request) -> dict:
     enforce_rate_limit(request, report_limiter, "report")
     record = make_report(body.text, body.sender, body.school, body.outcome)
     try:
-        append_report(record, REPORT_QUEUE)
+        get_store().add_report(record)
         queued = True
-    except OSError:
+    except Exception:                                   # noqa: BLE001 - the student still gets the FTC summary
         queued = False
     return {"queued": queued, "ftc_url": "https://reportfraud.ftc.gov",
             "ftc_summary": ftc_summary(body.text, body.sender, body.outcome),

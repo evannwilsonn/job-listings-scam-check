@@ -24,7 +24,6 @@ import json
 import sys
 from collections import defaultdict
 
-from .review_queue import QUEUE, read
 
 
 def package(rows: list, since: str = "", school: str = "", now=None) -> dict:
@@ -82,14 +81,17 @@ def summary(p: dict) -> str:
 
 
 def main(argv=None) -> int:
+    from pathlib import Path
+    from ..store import JsonlStore, get_store
     ap = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
-    ap.add_argument("--queue", default=str(QUEUE))
+    ap.add_argument("--queue", default="", help="a JSONL queue file; default is the database when DATABASE_URL is set")
     ap.add_argument("--since", default="", help="ISO date; only reports received on or after it")
     ap.add_argument("--school", default="")
     ap.add_argument("-o", "--out", default="")
     ap.add_argument("--summary", default="")
     a = ap.parse_args(argv)
-    p = package(read(a.queue), a.since, a.school)
+    store = JsonlStore(reports_path=Path(a.queue)) if a.queue else get_store()
+    p = package(store.confirmed_reports(a.since, a.school), a.since, a.school)
     text = json.dumps(p, indent=1)
     if a.out:
         open(a.out, "w", encoding="utf-8").write(text + "\n")
@@ -98,7 +100,6 @@ def main(argv=None) -> int:
     if not a.out and not a.summary:
         print(summary(p))
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

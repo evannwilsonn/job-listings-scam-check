@@ -158,11 +158,9 @@ def test_review_needs_a_reviewer_and_a_valid_decision(tmp_path):
 
 # ---------------------------------------------------------------- API
 
-def test_api_recovery_outcome_and_follow_up(tmp_path, monkeypatch):
+def test_api_recovery_outcome_and_follow_up(_isolated_store):
     from fastapi.testclient import TestClient
-    from scam_detector import api, followup
-    monkeypatch.setattr(followup, "CASES", tmp_path / "c.jsonl")
-    monkeypatch.setattr(followup, "OUTCOMES", tmp_path / "o.jsonl")
+    from scam_detector import api
     c = TestClient(api.app)
     plan = c.post("/recovery", json={"happened": ["sent_money"]}).json()
     assert plan["steps"][1]["id"] == "call_bank_payment"
@@ -173,6 +171,7 @@ def test_api_recovery_outcome_and_follow_up(tmp_path, monkeypatch):
     r = c.post("/outcome", json={"case_code": code, "happened": ["deposited_check"], "verified": "job_fake"}).json()
     assert r["recorded"] and r["recovery"]["steps"]
     assert c.post("/outcome", json={"case_code": code, "happened": ["teleported"]}).status_code == 422
+    assert len(_isolated_store.cases()) == 1 and len(_isolated_store.outcomes()) == 1
 
 
 def test_api_verify_job_without_board_lookup():
