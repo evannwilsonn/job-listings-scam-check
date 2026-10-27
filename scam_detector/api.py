@@ -19,9 +19,20 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
+import os
+
 from . import ml
-from .scorer import score_posting
-from .security import enforce_rate_limit, analyze_limiter, MAX_BODY_BYTES
+from .conversation import analyze_thread
+from .identity import sender_findings
+from .intel import intel_findings
+from .intel.cache import MemoryCache
+from .reports import OUTCOMES, append_report, ftc_summary, make_report, NEXT_STEPS
+from .scorer import _band, score_posting
+from .security import RateLimiter, enforce_rate_limit, analyze_limiter, MAX_BODY_BYTES
+
+_intel_cache = MemoryCache()
+report_limiter = RateLimiter(max_attempts=10, window_seconds=600)
+REPORT_QUEUE = os.environ.get("REPORT_QUEUE_PATH", "scam_detector/data/report_queue.jsonl")
 
 app = FastAPI(title="Job Scam Detector", version="1.0")
 
@@ -66,6 +77,21 @@ class PostingIn(BaseModel):
     run_network: bool = Field(default=True, description="Run live domain/MX lookups")
     second_look: bool = Field(default=True, description="Add the learned model's 'worth a second look' finding "
                                                         "(weight 0: it never changes the score or band)")
+    sender: str = Field(default="", max_length=320, description="Sender's email address, if it came by email")
+    sender_name: str = Field(default="", max_length=200, description="Sender's display name")
+    reply_to: str = Field(default="", max_length=320, description="Reply-To address, if different")
+
+
+class ThreadIn(BaseModel):
+    thread: str = Field(..., min_length=1, max_length=40000, description="The whole conversation, pasted or forwarded")
+    me: str = Field(default="", max_length=320, description="The student's own name or address, to tell the sides apart")
+
+
+class ReportIn(BaseModel):
+    text: str = Field(..., min_length=1, max_length=20000, description="The message or posting being reported")
+    sender: str = Field(default="", max_length=320)
+    school: str = Field(default="", max_length=40)
+    outcome: str = Field(default="", max_length=40, description="One of: " + ", ".join(OUTCOMES))
 
 
 @app.get("/health")
@@ -83,6 +109,17 @@ def analyze(posting: PostingIn, request: Request) -> dict:
         run_network=posting.run_network,
     )
     out = result.as_dict()
+    # Who sent it, and what the links and addresses are (look-alikes, blocklists, email authentication). The scorer
+    # already reports new_domain for domains in the text, so the intel copy is dropped to avoid counting it twice.
+    extra = sender_findings(posting.sender, posting.sender_name, posting.reply_to, posting.company, posting.description)
+    have = {f["rule_id"] for f in out["findings"]}
+    intel = intel_findings(posting.description, [], posting.sender, posting.company, cache=_intel_cache,
+                           network=posting.run_network)
+    extra += [f for f in intel if f["rule_id"] not in have and f["rule_id"] != "new_domain"]
+    if extra:
+        out["findings"].extend(extra)
+        out["score"] = min(100, sum(f.get("weight", 0) for f in out["findings"]))
+        out["band"], out["verdict"] = _band(out["score"], any(f.get("severity") == "critical" for f in out["findings"]))
     if posting.second_look:
         # The learned layer lives only on the server (the static page has no model). It adds a weight-0 finding when
         # it is confident and the rules weren't; it never changes the score or band, so it stays out of the scorer
@@ -92,3 +129,29 @@ def analyze(posting: PostingIn, request: Request) -> dict:
         if extra:
             out["findings"].append(extra)
     return out
+
+
+@app.post("/analyze-thread")
+def analyze_conversation(body: ThreadIn, request: Request) -> dict:
+    """A whole conversation: where it is in the scam playbook, the moment it turned, and the likely next ask."""
+    enforce_rate_limit(request, analyze_limiter, "analyze")
+    return analyze_thread(body.thread, me=body.me or None)
+
+
+@app.post("/report")
+def report(body: ReportIn, request: Request) -> dict:
+    """
+    One-tap anonymous report. Queues a masked record for a reviewer (see reports.py for what is kept) and returns the
+    FTC summary for the student to paste, plus what to do next for what already happened. Nothing reported here
+    reaches the network or training until a reviewer confirms it.
+    """
+    enforce_rate_limit(request, report_limiter, "report")
+    record = make_report(body.text, body.sender, body.school, body.outcome)
+    try:
+        append_report(record, REPORT_QUEUE)
+        queued = True
+    except OSError:
+        queued = False
+    return {"queued": queued, "ftc_url": "https://reportfraud.ftc.gov",
+            "ftc_summary": ftc_summary(body.text, body.sender, body.outcome),
+            "next_step": NEXT_STEPS.get(record["outcome"], "")}

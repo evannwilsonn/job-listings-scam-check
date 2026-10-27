@@ -52,6 +52,26 @@ The rules are data, in `scam_detector/rulepack/core.json`. See
 `scam_detector/README.md` for how scoring works and `ADAPTING.md` for adding
 rules.
 
+The API has three routes:
+
+- `POST /analyze` scores a posting or message. Give `sender`, `sender_name` and
+  `reply_to` when it came by email, and it also checks who sent it: free-mail
+  "recruiters", replies that go to another domain (the hacked-.edu pattern),
+  a sender domain that doesn't match the company, and look-alike or blocklisted
+  links (`scam_detector/identity.py`, `scam_detector/intel/`).
+- `POST /analyze-thread` reads a whole conversation and reports where it is in
+  the scam playbook and the likely next ask (`scam_detector/conversation.py`).
+- `POST /report` takes an anonymous report. It queues a masked copy for a
+  reviewer (contacts hashed, no name or IP) and returns a summary to paste into
+  reportfraud.ftc.gov plus a next step for what already happened
+  (`scam_detector/reports.py`). Nothing reported reaches training or the
+  cross-school network until a reviewer confirms it.
+
+`.github/workflows/ct-watch.yml` runs `scam_detector/tools/ct_watch_run.py` every
+Monday for the schools in `scam_detector/schools.json` and keeps the look-alike
+domain report as a downloadable artifact. `scam_detector/tools/import_reports.py`
+turns public scam reports you've saved into rows for `mine_candidates.py`.
+
 The labeled evaluation sets are not in this public repo, because they contain
 real people's contact details. So `scam_detector/tools/regress.py`,
 `scam_detector/tools/evaluate.py` and `scam_detector/tools/train_model.py` need
