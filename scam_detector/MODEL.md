@@ -152,6 +152,29 @@ real traffic far more often than the active model (over twice its rate and 5 poi
 `MODEL_AUTO_RELEASE=0` makes each step wait for a reviewer; rollback is always automatic. Every step is in
 `release_log` and on `/admin/model`.
 
+## Tried and not adopted (Oct 27, 2026)
+
+Same features, same threshold rule as the gate (lowest that flags no rules-quiet legit row in grouped CV, + 0.1), scored
+on the frozen holdouts (28 scams, 42 legit) and the hard-legit set. Run on the NoleCareerShield copy of the corpus (306
+training rows), so compare rows with each other, not with the shipped model's numbers.
+
+| Model | Holdout scams caught (rules alone 17) | New false alarms | CV AUC / AP on our rows |
+|---|---|---|---|
+| **Logistic regression (shipped)** | **22/28** | 1 | 0.992 / 0.983 |
+| Linear SVM, calibrated | 22/28 | 1 | 0.993 / 0.984 |
+| Random forest | 19/28 | 3 | 0.972 / 0.942 |
+| XGBoost | 19/28 | 1 | 0.987 / 0.975 |
+| LR + EMSCAD (866 fake, 3,000 real postings) at 0.2 weight | 19/28 | 0 | 0.976 / 0.966 |
+| LR + EMSCAD at 0.5 weight | 18/28 | 0 | 0.974 / 0.961 |
+
+- The SVM ties and gives up the per-feature explanations and the browser port; the tree models catch fewer and need far
+  more data. Logistic regression stays.
+- EMSCAD (2012-14 corporate job-board fraud) teaches the model a different kind of fake: its scores on our own rows get
+  worse, the threshold rises to stay clear of our real listings, and it catches fewer student scams. It removes the one
+  false alarm only by flagging less. Not used. Worth retrying only as a separate, lower-weight feature, not as labels.
+- Script: kept outside the repo (it needs the private corpora); rerun by repeating these configurations with
+  `train_model`'s functions.
+
 ## Uncertainty (conformal prediction)
 
 Training also stores class-conditional conformal values (`"conformal"` in the model file), computed from the
