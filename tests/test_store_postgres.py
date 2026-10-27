@@ -119,6 +119,16 @@ def test_real_jobs_become_legit_labels_and_labels_read_back(pg):
     assert all(isinstance(l["at"], float) for l in labels)
 
 
+def test_borderline_reports_keep_their_kind_and_label_source(pg):
+    from scam_detector.reports import make_report
+    rid = pg.add_report(make_report("Remote assistant for a professor, $400 weekly.", school="fsu", kind="borderline"))
+    assert pg.list_reports()[0]["kind"] == "borderline" and pg.add_report(_report()) and pg.list_reports()[1]["kind"] == "report"
+    pg.decide_report(rid, "dismissed", "E. Wilson", real=True)
+    rid2 = pg.add_report(make_report("Pay the training fee by Zelle today", school="fsu", kind="borderline"))
+    pg.decide_report(rid2, "confirmed", "E. Wilson")
+    assert sorted((l["label"], l["source"]) for l in pg.labels()) == [("legit", "borderline_real"), ("scam", "borderline")]
+
+
 def test_templates_round_trip_unsigned_hashes_and_forget(pg):
     from scam_detector import learning, memory
     text = ("Hello student, our department needs a remote personal assistant. $450 weekly, flexible hours, no experience "

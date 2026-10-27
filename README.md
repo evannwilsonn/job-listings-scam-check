@@ -111,6 +111,12 @@ production.
   own and the scripts it still misses, how scammers made contact, confirmed domains and how many schools saw them, what
   students told the follow-up happened, and what the detector learned. Markdown, ready to forward; `--json` for a
   dashboard. Counts only reviewer-confirmed scams and names no student.
+- Close calls go to a reviewer only with the student's consent (active learning, migration 005). When the rules don't
+  send a check to a person but the model flags it or scores it within 0.15 of its threshold, `/analyze` returns
+  `ask_review` and the embed shows "Let a reviewer check it". Tapping it posts the text through `/report` with
+  `kind=borderline`: masked like any report, nothing about the student kept, no FTC summary. The review queue marks
+  these `CLOSE CALL`; a decision becomes a label with source `borderline` or `borderline_real`. These are the labels
+  the next retrain learns the most from. `ASK_REVIEW_PER_DAY` (default 40, 0 turns it off) caps the offers.
 - `POST /lookup` answers "has this phone number, email, website or wallet been confirmed as a scam?" across every
   LureCheck school, and `/analyze` adds a critical finding when a message contains one
   (`scam_detector/network.py`). Only reviewer-confirmed indicators ever match.

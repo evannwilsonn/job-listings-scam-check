@@ -155,6 +155,21 @@
         rep.onclick = () => report(extra);
         tier.append(replied, rep);
       }
+      if (r.ask_review && !(r.band === "review" || r.band === "block")) {
+        // A close call for the detector. Sent only if the student taps it; masked like any report (kind=borderline).
+        const ask = el("button", {textContent: "Let a reviewer check it", className: "alt"});
+        ask.onclick = async () => {
+          ask.disabled = true;
+          extra.replaceChildren(el("p", {className: "small", textContent: "Sending..."}));
+          try {
+            const q = await post("/report", {text: text.value.slice(0, 20000), sender: sender.value, school: SCHOOL, kind: "borderline"});
+            extra.replaceChildren(el("p", {className: "small", textContent: q.queued
+              ? "Thanks. A career-center reviewer will look at it. Contact details were hidden first and nothing about you is kept."
+              : "Couldn't send it right now. Until a person has looked: don't pay, deposit or share anything."}));
+          } catch (e) { extra.replaceChildren(el("p", {className: "small", textContent: "Couldn't send it right now."})); }
+        };
+        tier.append(el("p", {className: "small", textContent: r.ask_review.why}), ask);
+      }
       if (r.text_read) {
         if (!text.value.trim()) text.value = r.text_read;
         tier.append(el("p", {className: "small", textContent: "We read this text from your file. If it's wrong, fix it above and check again."}),

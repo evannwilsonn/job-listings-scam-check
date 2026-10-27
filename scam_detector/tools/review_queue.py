@@ -80,7 +80,8 @@ def main(argv=None) -> int:
         return 0
     for r in store.list_reports("" if a.all else "reported", a.school):
         ind = r.get("indicators", {})
-        print(f"[{r['id']}] {r.get('received', '')[:10]} {r.get('school') or '-'} {r.get('status')} "
+        tag = " CLOSE CALL (the detector asked; dismiss --real if it's a real job)" if r.get("kind") == "borderline" else ""
+        print(f"[{r['id']}] {r.get('received', '')[:10]} {r.get('school') or '-'} {r.get('status')}{tag} "
               f"outcome={r.get('outcome') or '-'} domains={ind.get('domains', [])} wallets={len(ind.get('wallets', []))}")
         print("     " + r.get("text_masked", "")[:240].replace("\n", " "))
     return 0
