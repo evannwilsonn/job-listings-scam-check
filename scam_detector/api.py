@@ -22,7 +22,7 @@ from typing import List
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from . import learning, ml
+from . import guardrails, learning, ml
 from .conversation import analyze_thread
 from .attestations import attestation_findings
 from .employer import board_finding, check_job_board, screen_employer, verification_script
@@ -165,8 +165,9 @@ def analyze(posting: PostingIn, request: Request) -> dict:
     # already reports new_domain for domains in the text, so the intel copy is dropped to avoid counting it twice.
     extra = sender_findings(posting.sender, posting.sender_name, posting.reply_to, posting.company, posting.description)
     have = {f["rule_id"] for f in out["findings"]}
+    rules = guardrails.rules_for(posting.school)        # the career center's trusted and blocked domains
     intel = intel_findings(posting.description, [], posting.sender, posting.company, cache=_intel_cache,
-                           network=posting.run_network)
+                           protected_extra=guardrails.protected(rules), network=posting.run_network)
     extra += [f for f in intel if f["rule_id"] not in have and f["rule_id"] != "new_domain"]
     # The network (reviewer-confirmed scam contacts across schools) and what the named employer attested.
     extra += network_findings(posting.description, posting.sender)
@@ -176,8 +177,10 @@ def analyze(posting: PostingIn, request: Request) -> dict:
         extra.append(tm)
     _, att = attestation_findings(posting.company, posting.sender, posting.description, out["findings"] + extra)
     extra += att
-    if extra:
+    if extra or rules["trusted"] or rules["blocked"]:
         out["findings"].extend(extra)
+        out["findings"] = guardrails.apply(out["findings"], rules, text=posting.description, sender=posting.sender,
+                                           school_name=guardrails.school_name(posting.school))
         out["score"] = min(100, sum(f.get("weight", 0) for f in out["findings"]))
         out["band"], out["verdict"] = _band(out["score"], any(f.get("severity") == "critical" for f in out["findings"]))
     if posting.second_look:

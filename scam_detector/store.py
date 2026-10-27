@@ -19,6 +19,11 @@ The learning loop (learning.py) also keeps its state here, with times as Unix se
     store.start_run(trigger, live_labels) -> id / store.finish_run(id, **kw) / store.last_run() / store.runs(n)
     store.add_traffic(rec) / store.traffic(since) / store.prune_traffic(before)     drift and shadow comparisons
 
+A career center's own lists (guardrails.py):
+
+    store.school_rules(school) -> [{kind, value, reason, added_by, added_at}]          active entries
+    store.add_school_rule(school, kind, value, added_by, reason="") / store.remove_school_rule(school, kind, value, removed_by)
+
 Both backends take and return the same dict shapes, so the API, the reviewer tools and the reports don't care which
 one is in use. The file backend is for development and tests; production sets DATABASE_URL to a Neon role that is a
 member of lurecheck_app (see db/migrations/001_initial.sql).
@@ -54,6 +59,13 @@ def _now() -> str:
 
 def _epoch(t) -> Optional[float]:
     return t.timestamp() if t is not None else None
+
+
+def _check_rule(kind: str, added_by: str) -> None:
+    if kind not in ("trusted_domain", "blocked_domain"):
+        raise ValueError("kind must be trusted_domain or blocked_domain")
+    if not (added_by or "").strip():
+        raise ValueError("say who is adding it")
 
 
 def _check_decision(decision: str, reviewer: str) -> None:
@@ -253,6 +265,29 @@ class JsonlStore:
         p = self._p("traffic.jsonl")
         if p.exists():
             self._rewrite(p, [r for r in self._read(p) if r.get("at", 0) >= before])
+
+    # ---- a career center's own lists (guardrails.py) ----
+
+    def school_rules(self, school: str) -> List[dict]:
+        return [r for r in self._read(self._p("school_rules.jsonl")) if r["school"] == school and r.get("status") == "active"]
+
+    def add_school_rule(self, school: str, kind: str, value: str, added_by: str, reason: str = "") -> None:
+        _check_rule(kind, added_by)
+        if any(r["kind"] == kind and r["value"] == value for r in self.school_rules(school)):
+            return
+        self._append(self._p("school_rules.jsonl"), {"school": school, "kind": kind, "value": value, "reason": reason[:300],
+                                                     "added_by": added_by.strip()[:80], "added_at": time.time(), "status": "active"})
+
+    def remove_school_rule(self, school: str, kind: str, value: str, removed_by: str) -> bool:
+        p = self._p("school_rules.jsonl")
+        rows, hit = self._read(p), False
+        for r in rows:
+            if r["school"] == school and r["kind"] == kind and r["value"] == value and r.get("status") == "active":
+                r.update({"status": "removed", "removed_by": removed_by.strip()[:80], "removed_at": time.time()})
+                hit = True
+        if hit:
+            self._rewrite(p, rows)
+        return hit
 
 
 # ---------------------------------------------------------------- Postgres
@@ -577,6 +612,31 @@ class PostgresStore:
     def prune_traffic(self, before: float) -> None:
         with self._conn() as conn, conn.cursor() as cur:
             cur.execute("DELETE FROM model_traffic WHERE at < to_timestamp(%s)", (before,))
+
+    # ---- a career center's own lists (guardrails.py) ----
+
+    def school_rules(self, school: str) -> List[dict]:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("SELECT kind, value, reason, added_by, added_at FROM school_rules WHERE school_id = %s AND status = 'active' "
+                        "ORDER BY id", (school,))
+            return [{"school": school, "kind": k, "value": v, "reason": r, "added_by": b, "added_at": _epoch(a), "status": "active"}
+                    for k, v, r, b, a in cur.fetchall()]
+
+    def add_school_rule(self, school: str, kind: str, value: str, added_by: str, reason: str = "") -> None:
+        _check_rule(kind, added_by)
+        with self._conn() as conn, conn.cursor() as cur:
+            if self._school(cur, school) is None:
+                raise ValueError(f"unknown school {school!r}")
+            cur.execute("INSERT INTO school_rules (school_id, kind, value, reason, added_by) VALUES (%s, %s, %s, %s, %s) "
+                        "ON CONFLICT (school_id, kind, value) WHERE status = 'active' DO NOTHING",
+                        (school, kind, value, reason[:300], added_by.strip()[:80]))
+
+    def remove_school_rule(self, school: str, kind: str, value: str, removed_by: str) -> bool:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE school_rules SET status = 'removed', removed_by = %s, removed_at = now() "
+                        "WHERE school_id = %s AND kind = %s AND value = %s AND status = 'active'",
+                        (removed_by.strip()[:80], school, kind, value))
+            return cur.rowcount > 0
 
 
 _STORE = None

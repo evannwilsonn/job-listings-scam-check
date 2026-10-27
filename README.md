@@ -100,6 +100,12 @@ production.
   the labeled corpora (`LURECHECK_DATA`) are available, retrains when the evidence calls for it and moves a new model
   through shadow, staged rollout and watch, rolling back on its own. `learn status` shows where it stands. Model files
   live in the database (migration 003), so the API always serves the active one. See `scam_detector/MODEL.md`.
+- A career center's own lists (`scam_detector/guardrails.py`, `tools/school_rules.py`, migration 004): `trust` an
+  employer domain it has verified, and warnings about that domain's infrastructure (new, unregistered, no mail,
+  look-alike) stop counting while look-alikes of it start being flagged; `block` a domain and any check that uses it gets
+  a critical finding. Trust never overrides scam evidence (text rules, confirmed contacts, partner reports, template
+  matches, blocklists). Entries cover the host and its subdomains, never its parent. `/analyze` applies the list for the
+  `school` it's given; `schools.json` `employer_domains` count as trusted.
 - `POST /lookup` answers "has this phone number, email, website or wallet been confirmed as a scam?" across every
   LureCheck school, and `/analyze` adds a critical finding when a message contains one
   (`scam_detector/network.py`). Only reviewer-confirmed indicators ever match.
