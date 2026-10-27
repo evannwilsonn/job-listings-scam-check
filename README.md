@@ -52,7 +52,7 @@ The rules are data, in `scam_detector/rulepack/core.json`. See
 `scam_detector/README.md` for how scoring works and `ADAPTING.md` for adding
 rules.
 
-The API has three routes:
+The main API routes:
 
 - `POST /analyze` scores a posting or message. Give `sender`, `sender_name` and
   `reply_to` when it came by email, and it also checks who sent it: free-mail
@@ -66,6 +66,23 @@ The API has three routes:
   reportfraud.ftc.gov plus a next step for what already happened
   (`scam_detector/reports.py`). Nothing reported reaches training or the
   cross-school network until a reviewer confirms it.
+
+- `POST /verify-job` checks whether the job is open on the company's own job
+  board (Greenhouse, Lever or Ashby), whether the recruiter's address fits the
+  company, and returns a script for calling the company on a number the student
+  finds themselves (`scam_detector/employer.py`). A job missing from the board
+  is a note for a reviewer, never a verdict.
+- `POST /recovery` turns what already happened ("I deposited the check") into
+  ordered steps, most urgent first (`scam_detector/recovery.py`).
+- `/analyze` with `follow_up: true` returns a case code; `POST /outcome` records
+  what happened later. Only the verdict and rule ids are kept, never the text.
+  `tools/outcome_report.py` reports misses and false alarms from those answers
+  (`scam_detector/followup.py`).
+
+Reports go to a reviewer before they go anywhere: `tools/review_queue.py` marks
+each one confirmed or dismissed, and `tools/export_evidence.py` packages the
+confirmed indicators (domains and wallets in the clear, contacts hashed) with a
+plain-text summary for abuse desks, a campus bank or IC3.
 
 `.github/workflows/ct-watch.yml` runs `scam_detector/tools/ct_watch_run.py` every
 Monday for the schools in `scam_detector/schools.json` and keeps the look-alike
