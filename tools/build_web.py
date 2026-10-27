@@ -20,13 +20,21 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 RULEPACK = ROOT / "scam_detector" / "rulepack" / "core.json"
+MODEL = ROOT / "scam_detector" / "models" / "scam_model.json"
+# Model fields the browser needs. drift_ref and holdout are for the training tools only.
+MODEL_KEYS = ("format", "version", "threshold", "rule_scale", "rule_ids", "rule_coef", "vocab", "cvocab",
+              "shape_coef", "shape_scale", "intercept", "conformal", "trained_at")
 ENGINE = ROOT / "web" / "engine.js"
 PAGE = ROOT / "web" / "page.html"
 OUT = ROOT / "index.html"
 
 
 def public_rulepack(core: dict) -> dict:
-    """The rulepack as shipped to the browser: active rules only, change history stripped.
+    """The rulepack as shipped to the browser: active, non-private rules only, change history stripped.
+
+    Rules marked "private" counter a known evasion; publishing them would show scammers exactly what to change, so
+    they run only in the API (scam_detector/rules.py loads them; tools/tuning_watch.py watches how often they're the
+    only thing that caught a scam).
 
     The history entries carry superseded regexes that the engine never runs; leaving them out keeps the
     page smaller and keeps the shipped artifact equal to what the engine actually evaluates. Rule order
@@ -36,8 +44,25 @@ def public_rulepack(core: dict) -> dict:
     for spec in core["rules"]:
         if spec.get("status", "active") != "active":
             continue
+        if spec.get("private"):                 # server-only: runs in the API, never shipped to the page
+            continue
         rules.append({k: v for k, v in spec.items() if k != "history"})
     return {"version": str(core.get("version", "unknown")), "rules": rules}
+
+
+def public_model() -> dict | None:
+    """The learned model as shipped to the browser, or None when there is no model file (rules only)."""
+    if not MODEL.exists():
+        return None
+    spec = json.loads(MODEL.read_text(encoding="utf-8"))
+    model = {k: spec[k] for k in MODEL_KEYS if k in spec}
+    model["trained_on"] = {"rows": spec.get("trained_on", {}).get("rows")}
+    return model
+
+
+def _json(obj) -> str:
+    # </script> inside a JSON string would end the script tag early; JSON-escape the slash.
+    return json.dumps(obj, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
 
 
 def render() -> str:
@@ -45,14 +70,14 @@ def render() -> str:
     pack = public_rulepack(core)
     page = PAGE.read_text(encoding="utf-8")
     engine = ENGINE.read_text(encoding="utf-8").rstrip("\n")
-    # </script> inside a JSON string would end the script tag early; JSON-escape the slash.
-    pack_json = json.dumps(pack, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+    pack_json = _json(pack)
     if "</script" in engine.lower():
         raise SystemExit("web/engine.js must not contain the text '</script'")
     subs = {
         "{{RULEPACK_VERSION}}": pack["version"],
         "{{RULE_COUNT}}": str(len(pack["rules"])),
         "{{RULEPACK_JSON}}": pack_json,
+        "{{MODEL_JSON}}": _json(public_model()),
         "{{ENGINE_JS}}": engine,
     }
     for key, val in subs.items():

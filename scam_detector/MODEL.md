@@ -94,6 +94,25 @@ The loop runs on the live site. Nobody has to remember to retrain.
 
 `export_labeled.py` includes confirmed label-queue items, with email addresses and phone numbers masked.
 
+### The fast lane
+
+A scam a reviewer confirms that the detector had called safe or only "careful" is the most valuable label there is. When
+at least `RETRAIN_FAST_MIN` (5) distinct new labels include one such miss, the site retrains within the hour (it checks
+every `LEARN_TICK_MINUTES`, 30), never more often than every `RETRAIN_FAST_GAP_HOURS` (12). It may start while a release
+is being watched (after `RETRAIN_FAST_AFTER_WATCH_DAYS`, 2), never during a rollout. The candidate faces the same gate
+and the same evidence checks as any other; only the clock is shorter: 1 day of shadow, 1 day per rollout step, 7 days
+of watch (`RELEASE_FAST_*`). So a confirmed miss can reach every student in about three days instead of about two
+weeks, and the template memory below covers the hours in between. `RETRAIN_FAST=off` turns it off.
+
+### What the AI second opinion is shown (similar.py)
+
+When a student asks for the AI second opinion, it is also given the three confirmed scams most like the message and the
+two closest confirmed real jobs (TF-IDF cosine over the model's vocabulary, from reviewer labels and the labeled
+corpora, never the frozen holdouts). They are tagged as reference data, and the AI is told that a similar topic is not
+evidence and that its evidence must quote the message. This lets the AI recognize a rewritten version of a scheme
+reviewers confirmed yesterday. It is not a verdict on its own: offline, nearest-neighbor similarity rescued at most 1 of
+the 7 holdout scams that rules and model miss (they are schemes with no confirmed neighbor), so it adds no finding.
+
 ## Releases (release.py)
 
 1. **Release gate**, against the active model, on data the candidate never trained on:
@@ -147,6 +166,20 @@ matches a remembered scam at 60% or more gets `confirmed_scam_template` (warning
 90% or more `confirmed_scam_copy` (critical, 30 points). A "legit" label or an undo on the same text forgets it, so a
 mistaken label cannot keep flagging real listings. The store is `learning/templates.jsonl` next to the database
 (`SCAM_MEMORY_PATH`), and the identifier memory in `defense.py` works the same way for emails, numbers and wallets.
+
+### Sharing scripts between schools
+
+With `SHARE_HMAC_KEY` set (the key partner schools already use for contact details), every confirmed template is
+hashed with that key and published in the `/api/indicators` feed as a sketch and a date: no title, no note, no text,
+and email addresses and links are masked before hashing. Partners' feeds (`PEER_FEEDS`) are imported daily; each feed
+replaces that partner's earlier list, so a retraction there is a retraction here. A match against a partner's template
+is `peer_scam_template`, a warning (20, or 25 for a near-verbatim copy), never critical: our own reviewers decide.
+
+### Report accuracy (queue order only)
+
+A signed-in student's "scam" / "not a scam" never becomes a label. Once they have 3 decided reports, their track record
+orders the label queue: a reporter usually right (smoothed accuracy 70% or more) moves up with the note "Reliable
+reporter (n/m right)", one usually wrong moves down slightly; every fifth slot is still a random pick.
 
 ## Drift (drift.py): noticing when the world moved
 

@@ -46,3 +46,11 @@
 {"id": "remote_weekly_pay_no_amount", "title": "Research Assistant", "company": "", "description": "This is a remote position. You will work from home and get paid weekly. Send your CV to apply.", "urls": []}
 {"id": "unitless_workday_hours", "title": "Delivery Driver", "description": "Starting at $125/day. Hours: 8AM until packages are delivered (typically 8-9 hours). Paid training, company vehicle provided.", "company": "Acme Logistics", "urls": []}
 {"id": "unitless_short_hours_weekly_pay", "title": "Assistant", "description": "You can make $650 weekly for 1-2 hours, flexible remote work.", "company": "", "urls": []}
+{"id": "visa_threat_status", "title": "Research Assistant", "company": "", "description": "Your F-1 visa status is at risk of being revoked unless you complete onboarding today. Reply on WhatsApp.", "urls": []}
+{"id": "visa_legit_cpt", "title": "Data Analyst Intern", "company": "Acme Corp", "description": "International students welcome. We do not sponsor visas; CPT authorization required. Apply on our careers page.", "urls": []}
+{"id": "zh_consulate_launder", "title": "", "company": "", "description": "您好，这里是中国驻纽约领事馆，您涉嫌一起洗钱案件，需要将资金转账到安全账户。", "urls": []}
+{"id": "zh_legit_internship", "title": "实习生", "company": "Acme", "description": "我们是一家软件公司，欢迎留学生申请暑期实习。", "urls": []}
+{"id": "es_fake_check", "title": "Asistente", "company": "", "description": "Te enviaremos un cheque. Deposítalo y envía el resto a nuestro proveedor de equipo.", "urls": []}
+{"id": "es_fake_check_transfer", "title": "", "company": "", "description": "Recibirás un cheque por $2,500. Deposita el cheque y transfiere la diferencia por Zelle.", "urls": []}
+{"id": "es_advance_fee", "title": "Empleo", "company": "", "description": "Para empezar tienes que pagar la cuota de inscripción de $50.", "urls": []}
+{"id": "es_legit_payroll", "title": "Cajero", "company": "Tienda", "description": "El pago es por cheque cada dos semanas. Puedes depositar tu cheque en cualquier banco. No hay costo de inscripción.", "urls": []}

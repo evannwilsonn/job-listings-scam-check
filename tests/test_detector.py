@@ -114,3 +114,20 @@ def test_remote_weekly_pay_is_a_light_signal():
     f = {x.rule_id: x for x in run_text_rules("Work remotely and get paid weekly. Flexible part-time role for students.")}
     assert "remote_weekly_pay" in f and f["remote_weekly_pay"].weight <= 10
     assert "remote_weekly_pay" not in {x.rule_id for x in run_text_rules("On-site warehouse role, paid weekly.")}
+
+
+def test_visa_threat_fires_on_threats_not_on_work_authorization():
+    from scam_detector.rules import run_text_rules
+    ids = lambda t: {f.rule_id for f in run_text_rules(t)}
+    assert "visa_threat" in ids("Your F-1 visa status is at risk of being revoked unless you finish onboarding.")
+    assert "visa_threat" in ids("You face deportation if you don't complete this assignment.")
+    assert "visa_threat" not in ids("We do not sponsor visas; CPT authorization required.")
+    assert "visa_threat" not in ids("Candidates must have valid work authorization. STEM OPT students welcome.")
+
+
+def test_mule_and_check_warnings_state_the_risk():
+    import json
+    from pathlib import Path
+    rules = {r["id"]: r for r in json.loads((Path(__file__).resolve().parent.parent / "scam_detector" / "rulepack" / "core.json").read_text())["rules"]}
+    assert "repay" in rules["money_mule"]["why"] and "criminal" in rules["money_mule"]["why"]
+    assert "weeks later" in rules["fake_check_funds"]["why"]

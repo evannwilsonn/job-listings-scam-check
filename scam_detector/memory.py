@@ -14,6 +14,16 @@ How it works
     sketches; MATCH (0.6) counts as the same template, EXACT (0.9) as a near-verbatim copy.
   * A "legit" or "undo" decision on the same text forgets it, so a mistaken label can't keep flagging real listings.
   * The store is an append-only JSONL file (SCAM_MEMORY_PATH, written by the site); `load()` replays it.
+  * Email addresses and links are masked before hashing: they are identifiers (defense.py has its own memory for them)
+    and must not leak through a shared sketch.
+
+Sharing between schools
+  * Sketches are keyed hashes (blake2b with SCAM_MEMORY_KEY). Partner schools that share a key (the site uses
+    SHARE_HMAC_KEY, the same trust model as shared contact details) can compare sketches without seeing any text; without
+    the key a sketch is a list of meaningless numbers.
+  * A partner's feed is the whole current list: `import_peer` replaces everything from that source, so anything they
+    forget or retract disappears here too.
+  * A match against a partner's template is only ever a warning. Our own reviewers' confirmations can be critical.
 
 What it is allowed to do
   * Same policy as the identifier memory: reviewer-confirmed evidence may raise a verdict, never lower one. A near-verbatim
@@ -26,6 +36,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import struct
 import time
 from pathlib import Path
@@ -39,18 +50,36 @@ MIN_SHINGLES = 12        # texts shorter than this are too small to match on wor
 MAX_ENTRIES = 5000       # oldest templates are dropped past this
 
 
-def _h(s: str) -> int:
-    return struct.unpack("<Q", hashlib.blake2b(s.encode(), digest_size=8).digest())[0]
+_IDENT = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|https?://\S+|www\.\S+")
+
+
+def current_key() -> bytes:
+    return os.environ.get("SCAM_MEMORY_KEY", "").encode()[:64]
+
+
+def key_id(key: bytes) -> str:
+    return hashlib.sha256(b"memory-key:" + key).hexdigest()[:8] if key else "0"
+
+
+def keyring() -> dict:
+    """Key id -> key for every key this site can compute sketches with: its own, the peer key, and the unkeyed default."""
+    keys = [b"", current_key(), os.environ.get("SCAM_MEMORY_PEER_KEY", "").encode()[:64]]
+    return {key_id(k): k for k in keys}
+
+
+def _h(s: str, key: bytes = b"") -> int:
+    return struct.unpack("<Q", hashlib.blake2b(s.encode(), digest_size=8, key=key).digest())[0]
 
 
 def shingles(text: str) -> set:
-    t = tokens(clean(text))
+    t = tokens(clean(_IDENT.sub(" ", text or "")))
     return {" ".join(t[i:i + 3]) for i in range(max(0, len(t) - 2))}
 
 
-def sketch(text: str) -> list[int]:
-    """The K smallest trigram hashes, sorted. Jaccard(A, B) is estimated by merging two sketches."""
-    return sorted({_h(s) for s in shingles(text)})[:K]
+def sketch(text: str, key: bytes | None = None) -> list[int]:
+    """The K smallest trigram hashes, sorted. Jaccard(A, B) is estimated by merging two sketches made with the same key."""
+    key = current_key() if key is None else key
+    return sorted({_h(s, key) for s in shingles(text)})[:K]
 
 
 def similarity(a: list[int], b: list[int]) -> float:
@@ -74,6 +103,9 @@ class TemplateMemory:
     def apply(self, e: dict) -> None:
         if e.get("op") == "forget":
             self.entries.pop(e["key"], None)
+        elif e.get("op") == "drop_source":
+            for k in [k for k, x in self.entries.items() if x.get("source") == e["source"]]:
+                self.entries.pop(k)
         else:
             self.entries[e["key"]] = e
             while len(self.entries) > MAX_ENTRIES:
@@ -81,11 +113,17 @@ class TemplateMemory:
 
     def match(self, text: str) -> dict | None:
         """The best confirmed scam this text copies, or None."""
-        sk = sketch(text)
-        if len(sk) < MIN_SHINGLES:
-            return None
+        ring, sketches = keyring(), {}
         best = None
         for e in self.entries.values():
+            kid = e.get("kid", "0")
+            if kid not in ring:
+                continue                                    # made with a key this site doesn't hold
+            if kid not in sketches:
+                sketches[kid] = sketch(text, ring[kid])
+            sk = sketches[kid]
+            if len(sk) < MIN_SHINGLES:
+                return None
             s = similarity(sk, e["sketch"])
             if s >= MATCH and (best is None or s > best[0]):
                 best = (s, e)
@@ -93,7 +131,8 @@ class TemplateMemory:
             return None
         s, e = best
         return {"similarity": round(s, 3), "exact": s >= EXACT, "key": e["key"], "title": e.get("title", ""),
-                "when": e.get("when", ""), "source": e.get("source", ""), "note": e.get("note", "")}
+                "when": e.get("when", ""), "source": e.get("source", ""), "note": e.get("note", ""),
+                "peer": str(e.get("source", "")).startswith("peer:")}
 
     def finding(self, text: str) -> dict | None:
         m = self.match(text)
@@ -101,6 +140,14 @@ class TemplateMemory:
             return None
         when = f" on {m['when']}" if m["when"] else ""
         what = f"“{m['title']}”" if m["title"] else "a scam"
+        if m["peer"]:
+            school = m["source"][5:] or "a partner school"
+            return {"rule_id": "peer_scam_template", "severity": "warning", "weight": 25 if m["exact"] else 20,
+                    "title": "Reads like a scam confirmed at another school",
+                    "why": (f"About {round(m['similarity'] * 100)}% of its wording matches a scam that reviewers at {school} confirmed{when}. "
+                            "Scam scripts move from campus to campus. A reviewer here decides."),
+                    "matched": [f"{round(m['similarity'] * 100)}% match", school],
+                    "memory": {"key": m["key"], "similarity": m["similarity"], "source": m["source"]}}
         if m["exact"]:
             return {"rule_id": "confirmed_scam_copy", "severity": "critical", "weight": 30,
                     "title": "A copy of a scam our reviewers confirmed",
@@ -162,7 +209,7 @@ def remember(text: str, *, title: str = "", source: str = "reviewer", note: str 
     sk = sketch(text)
     if len(sk) < MIN_SHINGLES:
         return None
-    e = {"key": text_key(text), "sketch": sk, "title": (title or "")[:80], "when": time.strftime("%Y-%m-%d"),
+    e = {"key": text_key(text), "sketch": sk, "kid": key_id(current_key()), "title": (title or "")[:80], "when": time.strftime("%Y-%m-%d"),
          "source": source[:40], "note": (note or "")[:120]}
     _append(p, e)
     return e["key"]
@@ -173,6 +220,38 @@ def forget(text: str, *, path: Path | None = None) -> None:
     p = path or memory_path()
     if p:
         _append(p, {"op": "forget", "key": text_key(text)})
+
+
+def shareable(path: Path | None = None, key: bytes | None = None, limit: int = 2000) -> list[dict]:
+    """Our own confirmed templates made with `key` (the shared key), newest last: sketch and date only, never a title or note."""
+    m = load(path)
+    if not m:
+        return []
+    kid = key_id(current_key() if key is None else key)
+    own = [e for e in m.entries.values() if e.get("kid", "0") == kid and not str(e.get("source", "")).startswith("peer:")]
+    return [{"sketch": e["sketch"], "when": e.get("when", "")} for e in own[-limit:]]
+
+
+def import_peer(source: str, templates: list, path: Path | None = None, key: bytes | None = None) -> int:
+    """Replace everything from `source` with its current list. Each sketch must look like one (K or fewer unsigned 64-bit ints)."""
+    p = path or memory_path()
+    if not p:
+        return 0
+    src = "peer:" + str(source)[:60]
+    kid = key_id(os.environ.get("SCAM_MEMORY_PEER_KEY", "").encode()[:64] if key is None else key)
+    lines = [{"op": "drop_source", "source": src}]
+    for t in (templates or [])[:5000]:
+        sk = t.get("sketch") if isinstance(t, dict) else None
+        if (not isinstance(sk, list) or not (MIN_SHINGLES <= len(sk) <= K)
+                or not all(isinstance(x, int) and 0 <= x < 2 ** 64 for x in sk)):
+            continue
+        sk = sorted(set(sk))
+        lines.append({"key": "p" + hashlib.sha256((src + json.dumps(sk)).encode()).hexdigest()[:23], "sketch": sk, "kid": kid,
+                      "title": "", "when": str(t.get("when", ""))[:10], "source": src, "note": ""})
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open("a") as f:
+        f.write("".join(json.dumps(e, separators=(",", ":")) + "\n" for e in lines))
+    return len(lines) - 1
 
 
 def finding(text: str, path: Path | None = None) -> dict | None:

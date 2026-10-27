@@ -1,0 +1,32 @@
+name: ct-watch
+
+# Weekly look-alike domain watch for every school in scam_detector/schools.json.
+# The report is a downloadable artifact for a reviewer; nothing is written back to the repo.
+on:
+  schedule:
+    - cron: "17 13 * * 1"          # Mondays 13:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Look-alike certificates issued in the last 8 days
+        run: python -m scam_detector.tools.ct_watch_run --days 8 --out ct_report.json --markdown ct_report.md
+      - run: cat ct_report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ct-watch-report
+          path: |
+            ct_report.json
+            ct_report.md
+          retention-days: 90

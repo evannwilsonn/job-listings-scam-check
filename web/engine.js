@@ -6,11 +6,18 @@
  * loaded in Node by web/parity_runner.js, so the same code that runs in the browser is what the
  * parity gate (tools/parity.py) checks against the Python engine. Never edit the copy in index.html.
  *
- * The rules are data: createEngine(rulepack) takes the parsed scam_detector/rulepack/core.json.
+ * The rules are data: createEngine(rulepack, model, school) takes the parsed scam_detector/rulepack/core.json,
+ * the learned model (scam_detector/models/scam_model.json, optional) and the school settings (optional).
  * Message-mode checks (senderFindings, linkFindings) have no Python twin yet and are browser-only.
  */
-function createEngine(RULEPACK) {
+function createEngine(RULEPACK, MODEL, SCHOOL_CFG) {
   "use strict";
+  MODEL = MODEL || null;
+  // The school this copy of the checker is set up for. Look-alike and spoofing checks use it.
+  const SCHOOL = Object.assign({
+    short: "FSU", name: "Florida State University", domain: "fsu.edu",
+    lookalikes: ["fsu", "floridastate", "seminole"], career: "FSU Career Center",
+  }, SCHOOL_CFG || {});
 
   // ---------------- helpers ----------------
   const reEsc = s => s.replace(/[.*+?^${}()|[\]\\\/\-#&~]/g, "\\$&");
@@ -262,6 +269,112 @@ function createEngine(RULEPACK) {
   }
 
   // ---------------- the scorer ----------------
+  // ---------------- the learned second look (ml.py, model format 1 and 2) ----------------
+  // Same maths as scam_detector/ml.py; tests/test_page.py checks the two agree. It only ever raises a
+  // result to "Be careful": it adds no points and never decides on its own.
+  const PLACEHOLDER = /\[[^\]\n]{0,40}\]|\([^)\n]{0,40}redacted[^)\n]{0,40}\)|\bredacted\b|\bperson[0-9]+\b/gi;
+  const HEADER = /^[ \t>]*(?:from|to|cc|sent|date|subject)[ \t]*:/gim;
+  const SCHEME = /https?:\/\/|www\./gi;
+  const mlClean = t => (t || "").replace(PLACEHOLDER, " ").replace(HEADER, " ").replace(SCHEME, " ");
+  const mlTokens = t => normalize(mlClean(t)).toLowerCase().replace(/[0-9]/g, "0").match(/\$?[a-z0-9]+/g) || [];
+  function mlAnalyzer(t) { const w = mlTokens(t); return w.concat(w.slice(1).map((b, i) => w[i] + " " + b)); }
+  function mlPieces(t) {
+    const out = [];
+    for (let w of mlTokens(t)) { w = " " + w + " "; for (const n of [3, 4, 5]) for (let i = 0; i + n <= w.length; i++) out.push(w.slice(i, i + n)); }
+    return out;
+  }
+  const SHAPE = ["length", "money", "pay_no_amount", "per_period", "urgency", "contact_channel", "email", "free_mail", "url", "shouting",
+    "talks_to_you", "talks_as_we", "student", "edu_address", "requirements", "benefits_eeo", "non_ascii", "emoji", "exclamation",
+    "digits", "no_experience", "flexible", "tasks", "legal_entity"];
+  const SHAPE_TITLES = {length: "short text", money: "money mentions", pay_no_amount: "pay talk with no amount", per_period: "pay per period",
+    urgency: "urgency", contact_channel: "personal contact channel", email: "email address in text", free_mail: "free-mail address",
+    url: "web addresses", shouting: "SHOUTING", talks_to_you: "written at 'you'", talks_as_we: "speaks as a company",
+    student: "aimed at students", edu_address: ".edu address", requirements: "lists requirements", benefits_eeo: "benefits and compliance language",
+    non_ascii: "unusual characters", emoji: "emoji", exclamation: "exclamation marks", digits: "many digits",
+    no_experience: "no experience needed", flexible: "flexible / work from home", tasks: "tasks and errands", legal_entity: "named legal entity"};
+  const SH = {
+    money: /\$\s?[0-9][0-9,]*(?:\.[0-9][0-9])?|\b[0-9][0-9,]*\s?(?:dollars|usd)\b/gi,
+    payword: /\b(?:pay|paid|salary|wage|stipend|earn|earning|compensation|commission|bonus|allowance)\b/gi,
+    per: /\b(?:per|a|each|every)\s+(?:hour|hr|week|month|year|day|task|survey)\b|\b(?:hourly|weekly|monthly|daily|biweekly)\b/gi,
+    urgent: /\b(?:urgent|urgently|immediately|asap|right away|today|now|limited|hurry|quick|fast|instant)\b/gi,
+    contact: /\b(?:whatsapp|telegram|text me|text us|signal|wechat|dm me|email me|contact me|reach me|reply with|send your|cell|mobile)\b|\+?[0-9]{3}[-. )][0-9]{3}[-. ][0-9]{4}/gi,
+    email: /[A-Za-z0-9._+-]+@[A-Za-z0-9-]+\.[A-Za-z0-9.-]+/gi,
+    freemail: /@(?:gmail|yahoo|outlook|hotmail|aol|icloud|proton|protonmail|mail)\./i,
+    url: /https?:\/\/|www\.|\b[A-Za-z0-9-]+\.(?:com|net|org|io|co|info|biz|xyz|site|online|app)\b/gi,
+    shout: /\b[A-Z]{4,}\b/g,
+    you: /\byou(?:r|rs|rself)?\b/gi,
+    we: /\b(?:we|our|us|company|organization|team)\b/gi,
+    student: /\b(?:student|students|campus|university|college|semester|undergrad|freshman|sophomore)\b/gi,
+    edu: /@[A-Za-z0-9.-]+\.edu\b/i,
+    req: /\b(?:require|required|requirements|qualification|qualifications|degree|bachelor|experience|years of)\b/gi,
+    eeo: /\b(?:equal opportunity|eeo|background check|drug screen|benefits|401k|dental|vision|pto|health insurance)\b/gi,
+    nonascii: /[^\x00-\x7f]/gu,
+    emoji: /[\u{1F300}-\u{1FAFF}☀-➿]/gu,
+    excl: /!/g,
+    digit: /[0-9]/g,
+    noexp: /\bno (?:prior |previous )?experience\b|\bno experience (?:needed|required|necessary)\b|\banyone can\b/i,
+    flex: /\b(?:flexible|at your convenience|own hours|your own schedule|work from home|remote|anywhere|home[- ]based)\b/gi,
+    task: /\b(?:task|tasks|survey|surveys|data entry|typing|errand|errands|shopping|personal assistant|virtual assistant)\b/gi,
+    legal: /\b(?:llc|inc\.?|corporation|corp\.?|ltd|nonprofit|non-profit|department of|office of)\b/i,
+  };
+  const cnt = (k, t) => (t.match(SH[k]) || []).length;
+  const has = (k, t) => SH[k].test(t) ? 1 : 0;
+  function shapeFeatures(text) {
+    const raw = mlClean(text), n = Math.max(1, [...raw].length), words = Math.max(1, raw.split(/\s+/).filter(Boolean).length);
+    const money = cnt("money", raw), pay = cnt("payword", raw), m1 = x => Math.min(1, x);
+    return [m1(Math.log(1 + [...raw].length) / 10), m1(money / 3), pay && !money ? 1 : 0, m1(cnt("per", raw) / 3),
+      m1(cnt("urgent", raw) / 3), m1(cnt("contact", raw) / 3), m1(cnt("email", raw) / 2), has("freemail", raw),
+      m1(cnt("url", raw) / 3), m1(cnt("shout", raw) / 5), m1(cnt("you", raw) / words * 10), m1(cnt("we", raw) / words * 10),
+      m1(cnt("student", raw) / 3), has("edu", raw), m1(cnt("req", raw) / 4), m1(cnt("eeo", raw) / 3),
+      m1(cnt("nonascii", raw) / n * 20), m1(cnt("emoji", raw) / 3), m1(cnt("excl", raw) / 5), m1(cnt("digit", raw) / n * 10),
+      has("noexp", raw), m1(cnt("flex", raw) / 3), m1(cnt("task", raw) / 3), has("legal", raw)];
+  }
+  function tfidfParts(terms, vocab, kind) {
+    const counts = new Map();
+    for (const t of terms) if (Object.prototype.hasOwnProperty.call(vocab, t)) counts.set(t, (counts.get(t) || 0) + 1);
+    const vals = [...counts].map(([t, c]) => [t, (1 + Math.log(c)) * vocab[t][0]]);
+    const norm = Math.sqrt(vals.reduce((s, [, v]) => s + v * v, 0)) || 1;
+    return vals.map(([t, v]) => [kind, t, v / norm * vocab[t][1]]);
+  }
+  function modelPredict(ttl, description, company, url, findings, score) {
+    const m = MODEL, text = [ttl, company, description, url].filter(Boolean).join("\n");
+    let parts = tfidfParts(mlAnalyzer(text), m.vocab, "phrase");
+    if (m.format >= 2) {
+      parts = parts.concat(tfidfParts(mlPieces(text), m.cvocab || {}, "piece"));
+      shapeFeatures(text).forEach((x, i) => { if (x && i < m.shape_coef.length) parts.push(["trait", SHAPE[i], x * (m.shape_scale ?? 1) * m.shape_coef[i]]); });
+    }
+    const fired = new Set(findings.map(f => f.rule_id)), names = m.rule_ids.concat(["rule score"]);
+    m.rule_ids.map(id => fired.has(id) ? 1 : 0).concat([Math.min(100, score) / 100])
+      .forEach((x, i) => { if (x) parts.push(["rule", names[i], x * m.rule_scale * m.rule_coef[i]]); });
+    const logit = m.intercept + parts.reduce((s, p) => s + p[2], 0);
+    const p = 1 / (1 + Math.exp(-Math.max(-40, Math.min(40, logit))));
+    const rolled = new Map();
+    let pieces = 0;
+    for (const [k, nm, w] of parts) { if (k === "piece") pieces += w; else rolled.set(k + "\u0000" + nm, (rolled.get(k + "\u0000" + nm) || 0) + w); }
+    if (pieces > 0) rolled.set("piece\u0000spelling of the words", pieces);
+    const because = [...rolled].filter(([, w]) => w > 0).sort((a, b) => b[1] - a[1]).slice(0, 5)
+      .map(([key, w]) => { const [kind, name] = key.split("\u0000"); return {kind, name, weight: w}; });
+    return {probability: p, flag: p >= m.threshold, threshold: m.threshold, version: m.version, because};
+  }
+  function secondLook(ttl, description, company, url, findings, score) {
+    if (!MODEL) return null;
+    const pred = modelPredict(ttl, description, company, url, findings, score);
+    if (!pred.flag) return null;
+    const titles = Object.fromEntries(findings.map(f => [f.rule_id, f.title]));
+    const reasons = [], marks = [];
+    for (const b of pred.because) {
+      if (b.kind === "rule" && b.name !== "rule score") reasons.push(titles[b.name] || b.name.replace(/_/g, " "));
+      else if (b.kind === "phrase") { reasons.push(`"${b.name}"`); marks.push(b.name); }
+      else if (b.kind === "trait") reasons.push(SHAPE_TITLES[b.name] || b.name.replace(/_/g, " "));
+      else if (b.kind === "piece") reasons.push(b.name);
+    }
+    const rows = MODEL.trained_on && MODEL.trained_on.rows;
+    return Object.assign(F("model_second_look", "warning", 0, "Worth a second look",
+      `No single rule is sure, but ${rows ? `a model trained on ${rows} labeled listings` : "the trained model"} rates this ` +
+      `${Math.round(pred.probability * 100)}% likely to be a scam. It can suggest caution; it never decides on its own.`,
+      reasons.slice(0, 4)), {marks, model: {probability: Math.round(pred.probability * 1e4) / 1e4, version: pred.version}});
+  }
+
   const SEV = {critical: 0, warning: 1, note: 2};
   const bySeverity = (a, b) => SEV[a.severity] - SEV[b.severity] || b.weight - a.weight;
   function band(score, critical) { return critical || score >= 65 ? "block" : score >= 35 ? "review" : score >= 15 ? "caution" : "clear"; }
@@ -280,12 +393,24 @@ function createEngine(RULEPACK) {
     const lead_gen = leadGen(full, urlChain(urlChainList || [], company));
     findings.sort(bySeverity);
     const score = Math.min(100, findings.reduce((s, f) => s + f.weight, 0));
-    return {score, band: band(score, findings.some(f => f.severity === "critical")), findings, lead_gen, ruleset: RULEPACK.version};
+    const b = band(score, findings.some(f => f.severity === "critical"));
+    // The model looks again only where the rules weren't sure, and never adds points (weight 0).
+    if (b === "clear" || b === "caution") {
+      const s = secondLook(ttl, description, company, (urlChainList || [])[0] || "", findings, score);
+      if (s) findings.push(s);
+    }
+    return {score, band: b, findings, lead_gen, ruleset: RULEPACK.version};
+  }
+  // A result's level for the student: 0 no match, 1 be careful, 2 likely a scam, 3 stop.
+  function levelFor(b, findings, lead_gen) {
+    let level = BAND_LEVEL[b];
+    if (level < 1 && ((lead_gen && lead_gen.flag) || findings.some(f => f.rule_id === "model_second_look"))) level = 1;
+    return level;
   }
 
   // ---------------- "Is this a scam?" (msgcheck.py) ----------------
   const LEVELS = [
-    ["ok", "No known scam signs", "Nothing here matches a known scam pattern. That isn't a guarantee: confirm the employer through their own website or the FSU Career Center before sharing personal details."],
+    ["ok", "No known scam signs", `Nothing here matches a known scam pattern. That isn't a guarantee: confirm the employer through their own website or the ${SCHOOL.career} before sharing personal details.`],
     ["caution", "Be careful", "A few things are off. Verify the sender through an official channel you find yourself before you reply or click anything."],
     ["warn", "Likely a scam", "Several strong scam signals. Don't reply with personal information, don't click links, and don't send or accept money."],
     ["bad", "Scam. Stop here.", "This matches patterns that only scams use. Don't respond, don't click links, and never send money, gift cards, or bank details."],
@@ -294,24 +419,26 @@ function createEngine(RULEPACK) {
   const SHORT = new Set(["bit.ly", "tinyurl.com", "t.co", "rb.gy", "cutt.ly", "shorturl.at", "is.gd", "ow.ly", "buff.ly", "tiny.cc", "rebrand.ly", "s.id", "t.ly", "lnkd.in", "shorturl.com", "bl.ink", "short.io"]);
   const CHAT = new Set(["wa.me", "chat.whatsapp.com", "t.me", "telegram.me", "signal.me", "m.me", "discord.gg"]);
   const FORMS = new Set(["forms.gle", "docs.google.com", "forms.office.com", "jotform.com", "typeform.com"]);
-  const CLAIMS_SCHOOL = /\b(?:professor|prof\.|dr\.|department|dept\.?|university|career (?:center|services)|fsu|florida state|financial aid|registrar|dean|faculty|student employment)\b/i;
+  const SCHOOL_NAMES = [SCHOOL.short, SCHOOL.name].filter(Boolean).map(s => reEsc(s.toLowerCase()).replace(/ /g, "\\s+")).join("|");
+  const CLAIMS_SCHOOL = new RegExp(`\\b(?:professor|prof\\.|dr\\.|department|dept\\.?|university|career (?:center|services)|${SCHOOL_NAMES}|financial aid|registrar|dean|faculty|student employment)\\b`, "i");
+  const NAMES_SCHOOL = new RegExp(`\\b(?:${SCHOOL_NAMES}|career center)\\b`, "i");
   const CLAIMS_COMPANY = /\b(?:hr|human resources|recruit(?:er|ing|ment)|talent acquisition|hiring manager|onboarding)\b/i;
   const URL_RX = /(?:https?:\/\/|www\.)[^\s<>"')\]]+/gi;
   const EMAIL_RX = /[\w.+-]+@([\w-]+(?:\.[\w-]+)+)/gi;
-  const isFsu = d => { d = d.toLowerCase().replace(/\.$/, ""); return d === "fsu.edu" || d.endsWith(".fsu.edu"); };
-  const looksFsu = d => { d = d.toLowerCase().replace(/\.$/, ""); if (isFsu(d)) return false; const f = d.replace(/[^a-z0-9]/g, ""); return f.includes("fsu") || f.includes("floridastate") || f.includes("seminole"); };
+  const isSchool = d => { d = d.toLowerCase().replace(/\.$/, ""); return d === SCHOOL.domain || d.endsWith("." + SCHOOL.domain); };
+  const looksSchool = d => { d = d.toLowerCase().replace(/\.$/, ""); if (isSchool(d)) return false; const f = d.replace(/[^a-z0-9]/g, ""); return SCHOOL.lookalikes.some(x => f.includes(x)); };
   function senderFindings(sender, text) {
     const out = []; sender = (sender || "").trim();
     const domains = new Set(allMatches(EMAIL_RX, sender + " " + text).map(m => m[1].toLowerCase()));
     const sm = new RegExp(EMAIL_RX.source, "i").exec(sender); const sd = sm ? sm[1].toLowerCase() : "";
-    for (const d of [...domains].sort()) if (looksFsu(d))
-      out.push(F("fsu_lookalike", "critical", 40, "An address pretends to be FSU", `${d} is not an FSU address. Real FSU email ends in exactly @fsu.edu (or a department subdomain like @cs.fsu.edu). Look-alike domains are a classic phishing move.`, ["@" + d]));
+    for (const d of [...domains].sort()) if (looksSchool(d))
+      out.push(F("school_lookalike", "critical", 40, `An address pretends to be ${SCHOOL.short}`, `${d} is not a ${SCHOOL.short} address. Real ${SCHOOL.short} email ends in exactly @${SCHOOL.domain} (or a department subdomain like @cs.${SCHOOL.domain}). Look-alike domains are a classic phishing move.`, ["@" + d]));
     if (FREE_MAIL.has(sd)) {
       const claim = CLAIMS_SCHOOL.exec(text + " " + sender) || CLAIMS_COMPANY.exec(text + " " + sender);
       if (claim) out.push(F("personal_sender", "warning", 18, "Official-sounding message from a personal account", `It claims to be a ${claim[0].toLowerCase()} but was sent from ${sd}. Universities and real companies write from their own domain.`, ["@" + sd]));
     }
-    if (sender && /\b(?:fsu|florida state|career center)\b/i.test(sender) && sd && !isFsu(sd))
-      out.push(F("display_spoof", "warning", 20, "The sender name says FSU but the address doesn't", `The name shown mentions FSU, but the address is at ${sd}.`, [sender.slice(0, 80)]));
+    if (sender && NAMES_SCHOOL.test(sender) && sd && !isSchool(sd))
+      out.push(F("display_spoof", "warning", 20, `The sender name says ${SCHOOL.short} but the address doesn't`, `The name shown mentions ${SCHOOL.short}, but the address is at ${sd}.`, [sender.slice(0, 80)]));
     return out;
   }
   function linkFindings(text) {
@@ -325,7 +452,7 @@ function createEngine(RULEPACK) {
       if (SHORT.has(host)) out.push(F("short_link", "warning", 14, "A shortened link hides where it goes", `${host} links hide the real destination. Don't open it; ask for the company's own site instead.`, ev));
       else if (CHAT.has(host)) out.push(F("chat_link", "warning", 18, "Pushes you to a chat app", "Moving a 'job' to WhatsApp, Telegram or Signal is how scammers avoid the platforms that screen them.", ev));
       else if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) out.push(F("ip_link", "critical", 34, "A link to a bare IP address", "Real employers don't send links to raw number addresses.", ev));
-      else if (looksFsu(host)) out.push(F("fsu_lookalike_link", "critical", 40, "A link pretends to be FSU", `${host} is not an FSU website. FSU sites end in fsu.edu.`, ev));
+      else if (looksSchool(host)) out.push(F("school_lookalike_link", "critical", 40, `A link pretends to be ${SCHOOL.short}`, `${host} is not a ${SCHOOL.short} website. ${SCHOOL.short} sites end in ${SCHOOL.domain}.`, ev));
       else if (FORMS.has(host) || host.endsWith(".jotform.com")) out.push(F("form_link", "note", 8, "Asks you to fill in an outside form", "Forms are fine for events, but a 'job' that starts with a form asking for your details is a common data-harvesting step.", ev));
     }
     return out;
@@ -399,18 +526,18 @@ function createEngine(RULEPACK) {
     const findings = [...best.values()].sort(bySeverity);
     const score = Math.min(100, findings.reduce((s, f) => s + f.weight, 0));
     const b = band(score, findings.some(f => f.severity === "critical"));
-    let level = BAND_LEVEL[b];
-    if (r.lead_gen.flag && level < 1) level = 1;
+    const level = levelFor(b, findings, r.lead_gen);
     const [key, ttl, advice] = LEVELS[level];
     return {level, key, title: ttl, advice, score, band: b, findings, lead_gen: r.lead_gen};
   }
   return {normalize, runTextRules, scorePosting, check, linkFindings, clearedMatches, leadGen, urlChain,
-          compensation, compensationInfo, LEVELS, ruleset: RULEPACK.version, rules: RULES};
+          compensation, compensationInfo, levelFor, modelPredict, shapeFeatures, LEVELS, SCHOOL,
+          ruleset: RULEPACK.version, rules: RULES, model: MODEL ? MODEL.version : null};
 }
 
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {createEngine};
 }
-if (typeof window !== "undefined" && window.NCS_RULEPACK) {
-  window.NCS = createEngine(window.NCS_RULEPACK);
+if (typeof window !== "undefined" && window.LURECHECK_RULEPACK) {
+  window.LureCheck = createEngine(window.LURECHECK_RULEPACK, window.LURECHECK_MODEL || null, window.LURECHECK_SCHOOL || {});
 }

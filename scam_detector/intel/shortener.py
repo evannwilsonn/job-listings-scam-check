@@ -24,7 +24,7 @@ from urllib.parse import urljoin, urlsplit
 from .domains import normalize_host
 
 TIMEOUT = 4.0
-USER_AGENT = "NoleCareerShield-link-check/1.0 (+scam detector; HEAD only)"
+USER_AGENT = "LureCheck-link-check/1.0 (+scam detector; HEAD only)"
 
 SHORTENERS = frozenset({
     "bit.ly", "bitly.com", "j.mp", "tinyurl.com", "tiny.one", "rotf.lol", "t.co", "goo.gl",

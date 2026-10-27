@@ -1,5 +1,5 @@
 {
- "version": "2026.10.22.2",
+ "version": "2026.10.27.3",
  "rules": [
   {
    "id": "advance_fee",
@@ -53,7 +53,7 @@
    "severity": "critical",
    "weight": 34,
    "title": "The job involves moving money or packages",
-   "why": "Depositing checks and forwarding funds, or reshipping parcels, is how stolen money and goods get laundered.",
+   "why": "Depositing checks and forwarding funds, or reshipping parcels, is how stolen money and goods get laundered. Even if you didn't know, the bank can close your account, report you, and make you repay the money, and people who move stolen money or goods can face criminal charges. Stop and don't send anything on.",
    "phrases": [
     "deposit the check",
     "cash the check",
@@ -81,7 +81,14 @@
    "min_matches": 1,
    "bonus": 3,
    "added": "2026-09-29",
-   "source": "original"
+   "source": "original",
+   "history": [
+    {
+     "date": "2026-10-27",
+     "change": "rewrote student-facing text",
+     "why": "state the legal and banking risk to the student plainly (plan item 24)"
+    }
+   ]
   },
   {
    "id": "mystery_shopping",
@@ -193,7 +200,7 @@
    "severity": "warning",
    "weight": 17,
    "title": "Pushed onto a messaging app",
-   "why": "Moving to an unmonitored app right away avoids platform fraud detection and leaves no record.",
+   "why": "Moving to an unmonitored app right away avoids platform fraud detection and leaves no record. Keep talking where you found the job or on the company's own email. If they won't, look the company up yourself and call the main number on its website to ask whether the job and the recruiter are real.",
    "phrases": [
     "telegram",
     "whatsapp",
@@ -217,7 +224,14 @@
    "min_matches": 1,
    "bonus": 3,
    "added": "2026-09-29",
-   "source": "original"
+   "source": "original",
+   "history": [
+    {
+     "date": "2026-10-27",
+     "change": "rewrote student-facing text",
+     "why": "say what to do instead (plan item 19)"
+    }
+   ]
   },
   {
    "id": "text_interview",
@@ -225,7 +239,7 @@
    "severity": "warning",
    "weight": 15,
    "title": "Interview by text only",
-   "why": "Scam operations avoid live video because they're using a stolen or invented identity.",
+   "why": "Scam operations avoid live video because they're using a stolen or invented identity. A video call isn't proof either: some use face-swap filters. If you do get one, ask the interviewer to turn their head or wave a hand in front of their face; the filters often glitch.",
    "phrases": [
     "chat interview",
     "text interview",
@@ -243,7 +257,14 @@
    "min_matches": 1,
    "bonus": 3,
    "added": "2026-09-29",
-   "source": "original"
+   "source": "original",
+   "history": [
+    {
+     "date": "2026-10-27",
+     "change": "rewrote student-facing text",
+     "why": "video call isn't proof; live-movement check (plan item 21)"
+    }
+   ]
   },
   {
    "id": "instant_hire",
@@ -342,6 +363,93 @@
    "source": "original"
   },
   {
+   "id": "visa_threat",
+   "status": "active",
+   "severity": "warning",
+   "weight": 20,
+   "title": "Threatens your visa or immigration status",
+   "why": "The message says your visa, OPT, CPT or SEVIS status is at risk, mentions deportation or arrest, or asks you to pay something tied to your immigration status. Scammers target international students with these threats. Employers don't handle your visa status, and no real job asks you to pay to protect it. Talk to your school's international student office before you reply.",
+   "phrases": [],
+   "patterns": [
+    "\\b(?:visa|f-?1|j-?1|opt|stem\\s+opt|cpt|sevis|i-?20|immigration\\s+status|work\\s+authori[sz]ation)\\b[^.\\n]{0,40}\\b(?:revoked|cancell?ed|terminated|suspended|at\\s+risk|in\\s+jeopardy|violat(?:ed|ion))\\b",
+    "\\b(?:deport(?:ed|ation)?|arrest(?:ed)?\\s+warrant|immigration\\s+(?:officers?|police))\\b",
+    "\\b(?:pay|fee|fine|deposit|send)\\b[^.\\n]{0,40}\\b(?:visa|opt|cpt|sevis|i-?20|immigration)\\b[^.\\n]{0,30}\\b(?:status|fee|processing|clearance|renewal|maintain)\\b"
+   ],
+   "guards": [
+    "negation"
+   ],
+   "min_matches": 1,
+   "bonus": 3,
+   "added": "2026-10-27",
+   "source": "plan item 10: international students are targeted with visa and OPT/CPT threats"
+  },
+  {
+   "id": "authority_impersonation_zh",
+   "status": "active",
+   "severity": "warning",
+   "weight": 28,
+   "title": "Someone claiming to be police or a consulate wants money (Chinese)",
+   "why": "The message claims to be from a Chinese embassy, consulate, police or customs office, says you're linked to a crime such as money laundering, and asks you to pay, transfer money or keep it secret. Real authorities don't do this by phone, text or WeChat. Hang up and talk to your school's international student office.",
+   "phrases": [],
+   "patterns": [
+    "(?:大使馆|领事馆|公安局|公安|警察局|检察院|移民局|海关)[^。\\n]{0,40}(?:洗钱|逮捕|通缉|涉嫌|冻结|拘留|涉案|违法)",
+    "(?:洗钱|逮捕|通缉|涉嫌|冻结|拘留|涉案)[^。\\n]{0,40}(?:转账|汇款|保证金|安全账户|保密)"
+   ],
+   "guards": [],
+   "min_matches": 1,
+   "bonus": 3,
+   "added": "2026-10-27",
+   "source": "plan item 10: impersonation calls aimed at Chinese international students"
+  },
+  {
+   "id": "fake_check_es",
+   "status": "active",
+   "severity": "critical",
+   "weight": 34,
+   "title": "They'll send you a check and want money back (Spanish)",
+   "why": "Te mandan un cheque para depositar y después te piden enviar el resto, comprar equipo o pagar a un proveedor. El banco puede mostrar el dinero disponible, pero el cheque falso regresa semanas después y tú debes todo. This is the fake-check scam: don't deposit it.",
+   "phrases": [],
+   "patterns": [
+    "\\bcheck\\b[\\s\\S]{0,120}?\\bdep[oó]s[ií]t\\w*[\\s\\S]{0,100}?\\b(?:env[ií]\\w*|transf\\w*|devuelv\\w*|devolv\\w*|mand\\w*)\\b[^.\\n]{0,40}\\b(?:resto|diferencia|proveedor|equipo|dinero)\\b",
+    "\\bdep[oó]s[ií]t\\w*[^.\\n]{0,40}\\bcheck\\b[\\s\\S]{0,100}?\\b(?:proveedor|resto|diferencia|compra\\w*\\s+(?:el\\s+|los\\s+)?(?:equipo|materiales))\\b"
+   ],
+   "guards": [
+    "negation"
+   ],
+   "min_matches": 1,
+   "bonus": 3,
+   "added": "2026-10-27",
+   "source": "plan item 10: Spanish-language fake-check scripts"
+  },
+  {
+   "id": "advance_fee_es",
+   "status": "active",
+   "severity": "critical",
+   "weight": 30,
+   "title": "You're asked to pay to get the job (Spanish)",
+   "why": "Te piden pagar una cuota de inscripción, capacitación, uniforme o materiales para empezar. Los empleadores reales no cobran por trabajar. You're asked to pay to start: real employers never charge you.",
+   "phrases": [
+    "pago por adelantado",
+    "cuota de inscripción",
+    "cuota de inscripcion",
+    "costo de capacitación",
+    "costo de capacitacion",
+    "kit de inicio",
+    "depósito de garantía",
+    "deposito de garantia"
+   ],
+   "patterns": [
+    "\\b(?:debe|debes|tiene\\s+que|tienes\\s+que|necesita|necesitas)\\s+(?:pagar|depositar)\\b[^.\\n]{0,40}\\b(?:inscripci[oó]n|capacitaci[oó]n|entrenamiento|uniforme|materiales|kit|equipo)\\b"
+   ],
+   "guards": [
+    "negation"
+   ],
+   "min_matches": 1,
+   "bonus": 3,
+   "added": "2026-10-27",
+   "source": "plan item 10: Spanish-language advance-fee scripts"
+  },
+  {
    "id": "too_good",
    "status": "active",
    "severity": "warning",
@@ -428,7 +536,7 @@
    "severity": "warning",
    "weight": 22,
    "title": "Bank account and ID wanted to 'receive payment'",
-   "why": "Being asked for a U.S. bank account and SSN to 'receive salary' before you know the job, company, or pay is the money-mule recruitment pattern; your account is used to move stolen funds.",
+   "why": "Being asked for a U.S. bank account and SSN to 'receive salary' before you know the job, company, or pay is the money-mule recruitment pattern; your account is used to move stolen funds. Even if you didn't know, the bank can close your account, report you, and make you repay the money, and people who move stolen money or goods can face criminal charges. Stop and don't send anything on.",
    "phrases": [
     "bank account for payment",
     "valid u.s. bank account",
@@ -448,7 +556,14 @@
    "min_matches": 1,
    "bonus": 3,
    "added": "2026-09-29",
-   "source": "original"
+   "source": "original",
+   "history": [
+    {
+     "date": "2026-10-27",
+     "change": "rewrote student-facing text",
+     "why": "state the legal and banking risk to the student plainly (plan item 24)"
+    }
+   ]
   },
   {
    "id": "vague_employer",
@@ -547,7 +662,15 @@
    "min_matches": 1,
    "bonus": 0,
    "added": "2026-10-22",
-   "source": "red-team on training scams, Oct 2026: removing dollar amounts undid weekly_stipend in 70 of 280 rewrites"
+   "source": "red-team on training scams, Oct 2026: removing dollar amounts undid weekly_stipend in 70 of 280 rewrites",
+   "private": true,
+   "history": [
+    {
+     "date": "2026-10-27",
+     "change": "server-only (private)",
+     "why": "counters an evasion; publishing it in the page would teach the next evasion (plan items 12, 35)"
+    }
+   ]
   },
   {
    "id": "remote_weekly_pay",
@@ -569,7 +692,15 @@
    "min_matches": 1,
    "bonus": 0,
    "added": "2026-10-22",
-   "source": "red-team on training scams, Oct 2026: with dollar amounts removed, 'work remotely and get paid weekly' was all that was left"
+   "source": "red-team on training scams, Oct 2026: with dollar amounts removed, 'work remotely and get paid weekly' was all that was left",
+   "private": true,
+   "history": [
+    {
+     "date": "2026-10-27",
+     "change": "server-only (private)",
+     "why": "counters an evasion; publishing it in the page would teach the next evasion (plan items 12, 35)"
+    }
+   ]
   },
   {
    "id": "personal_channel",
@@ -577,7 +708,7 @@
    "severity": "warning",
    "weight": 18,
    "title": "Moves hiring to a personal phone, email or social account",
-   "why": "You're told to text a number, reply from your personal or 'alternative' email instead of your school address, or message someone on Instagram. That keeps the conversation away from your school's spam filters and anyone who could warn you.",
+   "why": "You're told to text a number, reply from your personal or 'alternative' email instead of your school address, or message someone on Instagram. That keeps the conversation away from your school's spam filters and anyone who could warn you. This happens from real university addresses too: scammers send from hacked student and staff accounts, so a genuine .edu address doesn't make the offer real.",
    "phrases": [],
    "patterns": [
     "\\b(?:alternative|alternate|personal|private|non[- ]?school|non[- ]?edu)\\s+e-?mail(?:\\s+address)?\\b",
@@ -596,7 +727,14 @@
    "min_matches": 1,
    "bonus": 3,
    "added": "2026-09-30",
-   "source": "field test Sept 2026 (Evan's labeled reasons)"
+   "source": "field test Sept 2026 (Evan's labeled reasons)",
+   "history": [
+    {
+     "date": "2026-10-27",
+     "change": "rewrote student-facing text",
+     "why": "a real .edu sender isn't proof (plan item 20)"
+    }
+   ]
   },
   {
    "id": "any_department",
@@ -604,7 +742,7 @@
    "severity": "note",
    "weight": 10,
    "title": "Open to anyone in any department",
-   "why": "Fake 'research assistant' offers say any student from any department can do the job. Real research jobs name the skills and the lab.",
+   "why": "Fake 'research assistant' offers say any student from any department can do the job. Real research jobs name the skills and the lab. These often come from real but hacked university email accounts.",
    "phrases": [],
    "patterns": [
     "\\b(?:any|all)\\s+(?:academic\\s+)?departments?\\s+(?:of|in)\\s+(?:the|our)\\s+(?:institution|university|school|college)\\b",
@@ -615,7 +753,14 @@
    "min_matches": 1,
    "bonus": 3,
    "added": "2026-09-30",
-   "source": "field test Sept 2026 (Evan's labeled reasons)"
+   "source": "field test Sept 2026 (Evan's labeled reasons)",
+   "history": [
+    {
+     "date": "2026-10-27",
+     "change": "rewrote student-facing text",
+     "why": "a real .edu sender isn't proof (plan item 20)"
+    }
+   ]
   },
   {
    "id": "student_hardship_bait",
@@ -644,7 +789,7 @@
    "severity": "critical",
    "weight": 34,
    "title": "Receive and re-ship packages from home",
-   "why": "The job is taking in parcels at your home and sending them on. That's reshipping stolen goods, and you're the one whose address is on the box.",
+   "why": "The job is taking in parcels at your home and sending them on. That's reshipping stolen goods, and you're the one whose address is on the box. Even if you didn't know, the bank can close your account, report you, and make you repay the money, and people who move stolen money or goods can face criminal charges. Stop and don't send anything on.",
    "phrases": [],
    "patterns": [
     "\\breshipp?(?:ing|er|ers)?\\b",
@@ -658,7 +803,14 @@
    "min_matches": 1,
    "bonus": 3,
    "added": "2026-09-30",
-   "source": "field test Sept 2026 (Evan's labeled reasons)"
+   "source": "field test Sept 2026 (Evan's labeled reasons)",
+   "history": [
+    {
+     "date": "2026-10-27",
+     "change": "rewrote student-facing text",
+     "why": "state the legal and banking risk to the student plainly (plan item 24)"
+    }
+   ]
   },
   {
    "id": "fake_check_funds",
@@ -666,7 +818,7 @@
    "severity": "critical",
    "weight": 34,
    "title": "They'll send you money to buy things",
-   "why": "You're promised a check or 'funds' to buy equipment, supplies or gifts, or you'll be 'paid in advance' for purchases. The check bounces after you've spent or forwarded the money.",
+   "why": "You're promised a check or 'funds' to buy equipment, supplies or gifts, or you'll be 'paid in advance' for purchases. Your bank may show the money as available within a day or two, but a fake check can come back weeks later, and you owe the bank the full amount. Don't deposit it, and don't send any of it on.",
    "phrases": [],
    "patterns": [
     "\\b(?:issue|send|mail|give|email)\\w*\\s+you\\s+(?:an?\\s+)?(?:official\\s+)?(?:check|cheque|paycheck)\\b",
@@ -685,7 +837,14 @@
    "min_matches": 1,
    "bonus": 3,
    "added": "2026-09-30",
-   "source": "field test Sept 2026 (Evan's labeled reasons)"
+   "source": "field test Sept 2026 (Evan's labeled reasons)",
+   "history": [
+    {
+     "date": "2026-10-27",
+     "change": "rewrote student-facing text",
+     "why": "honest timeline: funds available fast, check returned weeks later, student owes it (plan item 23 wording)"
+    }
+   ]
   },
   {
    "id": "app_boost_task",
