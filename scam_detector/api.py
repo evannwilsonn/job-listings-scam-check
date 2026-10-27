@@ -16,6 +16,7 @@ worker count and a cache when you have traffic that justifies it, not before.
 
 from __future__ import annotations
 
+import os
 from typing import List
 
 from fastapi import FastAPI, HTTPException, Request
@@ -40,6 +41,15 @@ _intel_cache = MemoryCache()
 report_limiter = RateLimiter(max_attempts=10, window_seconds=600)
 
 app = FastAPI(title="Job Scam Detector", version="1.0")
+
+# The embeddable checker (web/embed.js) runs on a career center's own site and calls this API from there. Browsers
+# only allow that for origins listed here: ALLOWED_ORIGINS="https://career.fsu.edu,https://lurecheck.com". Empty
+# (the default) allows no other site. No cookies or credentials are ever accepted cross-origin.
+_ORIGINS = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+if _ORIGINS:
+    from fastapi.middleware.cors import CORSMiddleware
+    app.add_middleware(CORSMiddleware, allow_origins=_ORIGINS, allow_methods=["POST", "GET"],
+                       allow_headers=["Content-Type"], allow_credentials=False, max_age=600)
 
 
 @app.middleware("http")

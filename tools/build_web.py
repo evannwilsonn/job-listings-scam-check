@@ -30,7 +30,11 @@ OUT = ROOT / "index.html"
 
 
 def public_rulepack(core: dict) -> dict:
-    """The rulepack as shipped to the browser: active rules only, change history stripped.
+    """The rulepack as shipped to the browser: active, non-private rules only, change history stripped.
+
+    Rules marked "private" counter a known evasion; publishing them would show scammers exactly what to change, so
+    they run only in the API (scam_detector/rules.py loads them; tools/tuning_watch.py watches how often they're the
+    only thing that caught a scam).
 
     The history entries carry superseded regexes that the engine never runs; leaving them out keeps the
     page smaller and keeps the shipped artifact equal to what the engine actually evaluates. Rule order
@@ -39,6 +43,8 @@ def public_rulepack(core: dict) -> dict:
     rules = []
     for spec in core["rules"]:
         if spec.get("status", "active") != "active":
+            continue
+        if spec.get("private"):                 # server-only: runs in the API, never shipped to the page
             continue
         rules.append({k: v for k, v in spec.items() if k != "history"})
     return {"version": str(core.get("version", "unknown")), "rules": rules}

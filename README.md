@@ -103,6 +103,16 @@ production.
 - `POST /screen-employer` gives a career-center reviewer one recommendation (hold, check, ok) when approving an
   employer, e.g. on Handshake. It never approves or rejects on its own.
 
+- `web/embed.js` puts the checker on a career center's own site with one script tag
+  (`data-api`, `data-school`). Results are tiered (clear, caution, review, block); likely scams get "I already
+  replied" (recovery steps) and "Report it". The API must list that site in `ALLOWED_ORIGINS`; cross-origin access is
+  off by default.
+- Rules marked `"private": true` run only in the API and are left out of the public page, so a scammer testing
+  scripts against the page can't see them. `tools/tuning_watch.py` reports how often they were the only reason a
+  scam was flagged; a jump means someone is tuning against the page.
+- `tools/abuse_reports.py` drafts takedown emails per registrar (RDAP lookup) for confirmed scam domains. It never
+  sends anything.
+
 Reports go to a reviewer before they go anywhere: `tools/review_queue.py` marks
 each one confirmed or dismissed, and `tools/export_evidence.py` packages the
 confirmed indicators (domains and wallets in the clear, contacts hashed) with a

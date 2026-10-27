@@ -1,5 +1,5 @@
 {
- "version": "2026.10.27.2",
+ "version": "2026.10.27.3",
  "rules": [
   {
    "id": "advance_fee",
@@ -662,7 +662,15 @@
    "min_matches": 1,
    "bonus": 0,
    "added": "2026-10-22",
-   "source": "red-team on training scams, Oct 2026: removing dollar amounts undid weekly_stipend in 70 of 280 rewrites"
+   "source": "red-team on training scams, Oct 2026: removing dollar amounts undid weekly_stipend in 70 of 280 rewrites",
+   "private": true,
+   "history": [
+    {
+     "date": "2026-10-27",
+     "change": "server-only (private)",
+     "why": "counters an evasion; publishing it in the page would teach the next evasion (plan items 12, 35)"
+    }
+   ]
   },
   {
    "id": "remote_weekly_pay",
@@ -684,7 +692,15 @@
    "min_matches": 1,
    "bonus": 0,
    "added": "2026-10-22",
-   "source": "red-team on training scams, Oct 2026: with dollar amounts removed, 'work remotely and get paid weekly' was all that was left"
+   "source": "red-team on training scams, Oct 2026: with dollar amounts removed, 'work remotely and get paid weekly' was all that was left",
+   "private": true,
+   "history": [
+    {
+     "date": "2026-10-27",
+     "change": "server-only (private)",
+     "why": "counters an evasion; publishing it in the page would teach the next evasion (plan items 12, 35)"
+    }
+   ]
   },
   {
    "id": "personal_channel",
