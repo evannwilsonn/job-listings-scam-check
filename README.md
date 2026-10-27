@@ -106,6 +106,11 @@ production.
   a critical finding. Trust never overrides scam evidence (text rules, confirmed contacts, partner reports, template
   matches, blocklists). Entries cover the host and its subdomains, never its parent. `/analyze` applies the list for the
   `school` it's given; `schools.json` `employer_domains` count as trusted.
+- `python -m scam_detector.tools.trends --school fsu` writes the monthly trends report for a career center
+  (`scam_detector/trends.py`): confirmed scams by scheme against last month, how many today's detector catches on its
+  own and the scripts it still misses, how scammers made contact, confirmed domains and how many schools saw them, what
+  students told the follow-up happened, and what the detector learned. Markdown, ready to forward; `--json` for a
+  dashboard. Counts only reviewer-confirmed scams and names no student.
 - `POST /lookup` answers "has this phone number, email, website or wallet been confirmed as a scam?" across every
   LureCheck school, and `/analyze` adds a critical finding when a message contains one
   (`scam_detector/network.py`). Only reviewer-confirmed indicators ever match.
