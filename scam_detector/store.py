@@ -108,6 +108,35 @@ class JsonlStore:
     def cases(self) -> List[dict]:
         return self._read(self.cases_path)
 
+    def confirmed_matches(self, indicators: dict) -> List[dict]:
+        """Confirmed indicators among these, with how many confirmed reports and schools named them."""
+        out = []
+        reports = self.confirmed_reports()
+        for key, kind, _ in _KINDS:
+            for v in indicators.get(key, []):
+                hits = [r for r in reports if v in r.get("indicators", {}).get(key, [])]
+                if hits:
+                    days = sorted(r.get("received", "")[:10] for r in hits)
+                    out.append({"kind": kind, "value": v, "reports": len(hits),
+                                "schools": len({r.get("school") for r in hits if r.get("school")}),
+                                "schools_7d": None, "first_seen": days[0], "last_seen": days[-1]})
+        return out
+
+    def _attestations(self) -> dict:
+        p = self.cases_path.parent / "attestations.json"
+        return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+
+    def attestation(self, company_key: str) -> Optional[dict]:
+        a = self._attestations().get(company_key)
+        return a if a and a.get("status", "active") == "active" else None
+
+    def add_attestation(self, record: dict) -> None:
+        p = self.cases_path.parent / "attestations.json"
+        data = self._attestations()
+        data[record["company_key"]] = {**record, "status": record.get("status", "active"), "verified_at": _now()}
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(data, indent=1, ensure_ascii=False), encoding="utf-8")
+
     def outcomes(self) -> List[dict]:
         return self._read(self.outcomes_path)
 
@@ -232,6 +261,54 @@ class PostgresStore:
             cur.execute("SELECT case_hash, opened_on, coalesce(school_id, ''), band, score, rules, model_flag FROM cases")
             return [{"case": c, "date": d.isoformat(), "school": s, "band": b, "score": sc, "rules": list(r),
                      "model_flag": m} for c, d, s, b, sc, r, m in cur.fetchall()]
+
+    def confirmed_matches(self, indicators: dict) -> List[dict]:
+        pairs = [(kind, v) for key, kind, _ in _KINDS for v in indicators.get(key, [])]
+        if not pairs:
+            return []
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("""
+                SELECT i.kind::text, i.value, count(DISTINCT r.id) FILTER (WHERE r.status = 'confirmed'),
+                       count(DISTINCT s.school_id),
+                       count(DISTINCT s.school_id) FILTER (WHERE s.seen_at > now() - interval '7 days'),
+                       min(i.first_seen)::date, max(i.last_seen)::date
+                FROM indicators i
+                JOIN unnest(%s::text[], %s::text[]) AS q(kind, value) ON q.kind = i.kind::text AND q.value = i.value
+                LEFT JOIN report_indicators ri ON ri.indicator_id = i.id
+                LEFT JOIN reports r ON r.id = ri.report_id
+                LEFT JOIN sightings s ON s.indicator_id = i.id
+                WHERE i.status = 'confirmed'
+                GROUP BY i.kind, i.value""", ([k for k, _ in pairs], [v for _, v in pairs]))
+            return [{"kind": k, "value": v, "reports": r, "schools": sc, "schools_7d": s7,
+                     "first_seen": f.isoformat(), "last_seen": l.isoformat()} for k, v, r, sc, s7, f, l in cur.fetchall()]
+
+    def attestation(self, company_key: str) -> Optional[dict]:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("SELECT company, company_key, email_domains, careers_url, never_text, never_chat_apps, "
+                        "never_checks, never_fees FROM employer_attestations WHERE company_key = %s AND status = 'active'",
+                        (company_key,))
+            row = cur.fetchone()
+        if not row:
+            return None
+        keys = ("company", "company_key", "email_domains", "careers_url", "never_text", "never_chat_apps",
+                "never_checks", "never_fees")
+        return {**dict(zip(keys, row)), "email_domains": list(row[2])}
+
+    def add_attestation(self, record: dict) -> None:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO employer_attestations (company, company_key, email_domains, careers_url, never_text,
+                    never_chat_apps, never_checks, never_fees, contact, verified_by)
+                VALUES (%(company)s, %(company_key)s, %(email_domains)s, %(careers_url)s, %(never_text)s,
+                    %(never_chat_apps)s, %(never_checks)s, %(never_fees)s, %(contact)s, %(verified_by)s)
+                ON CONFLICT (company_key) DO UPDATE SET company = EXCLUDED.company,
+                    email_domains = EXCLUDED.email_domains, careers_url = EXCLUDED.careers_url,
+                    never_text = EXCLUDED.never_text, never_chat_apps = EXCLUDED.never_chat_apps,
+                    never_checks = EXCLUDED.never_checks, never_fees = EXCLUDED.never_fees,
+                    contact = EXCLUDED.contact, verified_by = EXCLUDED.verified_by, verified_at = now(),
+                    status = 'active'""",
+                {"careers_url": None, "contact": None, "never_text": False, "never_chat_apps": False,
+                 "never_checks": True, "never_fees": True, **record})
 
     def outcomes(self) -> List[dict]:
         with self._conn() as conn, conn.cursor() as cur:

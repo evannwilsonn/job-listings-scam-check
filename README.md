@@ -94,6 +94,15 @@ Postgres (`scam_detector/store.py`); without it they fall back to JSONL files in
 Confirming a report there also confirms its indicators and adds it to `labels` for the next retrain. Use a Neon branch to test a migration or a retrain against a copy of
 production.
 
+- `POST /lookup` answers "has this phone number, email, website or wallet been confirmed as a scam?" across every
+  LureCheck school, and `/analyze` adds a critical finding when a message contains one
+  (`scam_detector/network.py`). Only reviewer-confirmed indicators ever match.
+- Employers can tell LureCheck how they recruit (`tools/attest.py`, after a reviewer confirms it with the employer).
+  A message naming that employer from another domain, on a chat app it doesn't use, or asking for a check or fee it
+  never asks for, gets a warning (`scam_detector/attestations.py`).
+- `POST /screen-employer` gives a career-center reviewer one recommendation (hold, check, ok) when approving an
+  employer, e.g. on Handshake. It never approves or rejects on its own.
+
 Reports go to a reviewer before they go anywhere: `tools/review_queue.py` marks
 each one confirmed or dismissed, and `tools/export_evidence.py` packages the
 confirmed indicators (domains and wallets in the clear, contacts hashed) with a

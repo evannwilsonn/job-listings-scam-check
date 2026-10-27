@@ -1,5 +1,5 @@
 {
- "version": "2026.10.27.1",
+ "version": "2026.10.27.2",
  "rules": [
   {
    "id": "advance_fee",
@@ -382,6 +382,72 @@
    "bonus": 3,
    "added": "2026-10-27",
    "source": "plan item 10: international students are targeted with visa and OPT/CPT threats"
+  },
+  {
+   "id": "authority_impersonation_zh",
+   "status": "active",
+   "severity": "warning",
+   "weight": 28,
+   "title": "Someone claiming to be police or a consulate wants money (Chinese)",
+   "why": "The message claims to be from a Chinese embassy, consulate, police or customs office, says you're linked to a crime such as money laundering, and asks you to pay, transfer money or keep it secret. Real authorities don't do this by phone, text or WeChat. Hang up and talk to your school's international student office.",
+   "phrases": [],
+   "patterns": [
+    "(?:大使馆|领事馆|公安局|公安|警察局|检察院|移民局|海关)[^。\\n]{0,40}(?:洗钱|逮捕|通缉|涉嫌|冻结|拘留|涉案|违法)",
+    "(?:洗钱|逮捕|通缉|涉嫌|冻结|拘留|涉案)[^。\\n]{0,40}(?:转账|汇款|保证金|安全账户|保密)"
+   ],
+   "guards": [],
+   "min_matches": 1,
+   "bonus": 3,
+   "added": "2026-10-27",
+   "source": "plan item 10: impersonation calls aimed at Chinese international students"
+  },
+  {
+   "id": "fake_check_es",
+   "status": "active",
+   "severity": "critical",
+   "weight": 34,
+   "title": "They'll send you a check and want money back (Spanish)",
+   "why": "Te mandan un cheque para depositar y después te piden enviar el resto, comprar equipo o pagar a un proveedor. El banco puede mostrar el dinero disponible, pero el cheque falso regresa semanas después y tú debes todo. This is the fake-check scam: don't deposit it.",
+   "phrases": [],
+   "patterns": [
+    "\\bcheck\\b[\\s\\S]{0,120}?\\bdep[oó]s[ií]t\\w*[\\s\\S]{0,100}?\\b(?:env[ií]\\w*|transf\\w*|devuelv\\w*|devolv\\w*|mand\\w*)\\b[^.\\n]{0,40}\\b(?:resto|diferencia|proveedor|equipo|dinero)\\b",
+    "\\bdep[oó]s[ií]t\\w*[^.\\n]{0,40}\\bcheck\\b[\\s\\S]{0,100}?\\b(?:proveedor|resto|diferencia|compra\\w*\\s+(?:el\\s+|los\\s+)?(?:equipo|materiales))\\b"
+   ],
+   "guards": [
+    "negation"
+   ],
+   "min_matches": 1,
+   "bonus": 3,
+   "added": "2026-10-27",
+   "source": "plan item 10: Spanish-language fake-check scripts"
+  },
+  {
+   "id": "advance_fee_es",
+   "status": "active",
+   "severity": "critical",
+   "weight": 30,
+   "title": "You're asked to pay to get the job (Spanish)",
+   "why": "Te piden pagar una cuota de inscripción, capacitación, uniforme o materiales para empezar. Los empleadores reales no cobran por trabajar. You're asked to pay to start: real employers never charge you.",
+   "phrases": [
+    "pago por adelantado",
+    "cuota de inscripción",
+    "cuota de inscripcion",
+    "costo de capacitación",
+    "costo de capacitacion",
+    "kit de inicio",
+    "depósito de garantía",
+    "deposito de garantia"
+   ],
+   "patterns": [
+    "\\b(?:debe|debes|tiene\\s+que|tienes\\s+que|necesita|necesitas)\\s+(?:pagar|depositar)\\b[^.\\n]{0,40}\\b(?:inscripci[oó]n|capacitaci[oó]n|entrenamiento|uniforme|materiales|kit|equipo)\\b"
+   ],
+   "guards": [
+    "negation"
+   ],
+   "min_matches": 1,
+   "bonus": 3,
+   "added": "2026-10-27",
+   "source": "plan item 10: Spanish-language advance-fee scripts"
   },
   {
    "id": "too_good",
