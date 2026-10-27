@@ -88,7 +88,8 @@ itself: email addresses and phone numbers can only be stored as hashes, report t
 
 The app connects as a login role that is a member of `lurecheck_app` (read, insert, update; no delete, no schema
 changes). Create one in the Neon console, run `GRANT lurecheck_app TO <role>;`, and put its connection string in
-the server's `DATABASE_URL`. Never commit it. With it set, `/report`, the follow-up and the reviewer tools use
+the server's `DATABASE_URL`, using the **pooled** string (host ends in `-pooler`). Run migrations over the
+**direct** string instead (no `-pooler`), since the pooler doesn't keep session state. Never commit either. With it set, `/report`, the follow-up and the reviewer tools use
 Postgres (`scam_detector/store.py`); without it they fall back to JSONL files in `scam_detector/data/` for development.
 Confirming a report there also confirms its indicators and adds it to `labels` for the next retrain. Use a Neon branch to test a migration or a retrain against a copy of
 production.

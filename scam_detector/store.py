@@ -122,7 +122,9 @@ class PostgresStore:
         self._schools: Optional[set] = None
 
     def _conn(self):
-        return self._psycopg.connect(self.url, connect_timeout=10)
+        # Neon's pooled URL goes through PgBouncer in transaction mode; psycopg's automatic server-side prepared
+        # statements (after 5 runs of the same query) don't belong there, so they're off.
+        return self._psycopg.connect(self.url, connect_timeout=10, prepare_threshold=None)
 
     def _school(self, cur, school: str) -> Optional[str]:
         if self._schools is None:
