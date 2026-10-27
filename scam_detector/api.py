@@ -16,6 +16,8 @@ worker count and a cache when you have traffic that justifies it, not before.
 
 from __future__ import annotations
 
+from typing import List
+
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
@@ -23,10 +25,13 @@ import os
 
 from . import ml
 from .conversation import analyze_thread
+from .employer import board_finding, check_job_board, verification_script
+from .followup import VERIFIED, follow_up_date, open_case, record_outcome
 from .identity import sender_findings
 from .intel import intel_findings
 from .intel.cache import MemoryCache
-from .reports import OUTCOMES, append_report, ftc_summary, make_report, NEXT_STEPS
+from .recovery import HAPPENED, next_step, recovery_plan
+from .reports import OUTCOMES, append_report, ftc_summary, make_report
 from .scorer import _band, score_posting
 from .security import RateLimiter, enforce_rate_limit, analyze_limiter, MAX_BODY_BYTES
 
@@ -80,11 +85,34 @@ class PostingIn(BaseModel):
     sender: str = Field(default="", max_length=320, description="Sender's email address, if it came by email")
     sender_name: str = Field(default="", max_length=200, description="Sender's display name")
     reply_to: str = Field(default="", max_length=320, description="Reply-To address, if different")
+    follow_up: bool = Field(default=False, description="Student opted in to a follow-up: returns a case code. Only "
+                                                       "the verdict and rule ids are kept, never the text.")
+    school: str = Field(default="", max_length=40)
 
 
 class ThreadIn(BaseModel):
     thread: str = Field(..., min_length=1, max_length=40000, description="The whole conversation, pasted or forwarded")
     me: str = Field(default="", max_length=320, description="The student's own name or address, to tell the sides apart")
+
+
+class RecoveryIn(BaseModel):
+    happened: List[str] = Field(default_factory=list, max_length=12, description="One or more of: " + ", ".join(HAPPENED))
+
+
+class OutcomeIn(BaseModel):
+    case_code: str = Field(..., min_length=6, max_length=40)
+    happened: List[str] = Field(..., min_length=1, max_length=12, description="'nothing' or values from /recovery")
+    verified: str = Field(default="", max_length=20, description="One of: " + ", ".join(v for v in VERIFIED if v))
+
+
+class VerifyIn(BaseModel):
+    company: str = Field(..., min_length=1, max_length=200)
+    title: str = Field(default="", max_length=200)
+    recruiter_name: str = Field(default="", max_length=120)
+    recruiter_email: str = Field(default="", max_length=320)
+    channel: str = Field(default="", max_length=60, description="How they contacted the student, e.g. text, LinkedIn")
+    urls: List[str] = Field(default_factory=list, max_length=10)
+    check_board: bool = Field(default=True, description="Look the job up on the company's public job board")
 
 
 class ReportIn(BaseModel):
@@ -128,6 +156,9 @@ def analyze(posting: PostingIn, request: Request) -> dict:
                                findings=out["findings"], score=out["score"])
         if extra:
             out["findings"].append(extra)
+    if posting.follow_up:
+        out["case_code"] = open_case(out, posting.school)
+        out["follow_up_after"] = follow_up_date()
     return out
 
 
@@ -154,4 +185,38 @@ def report(body: ReportIn, request: Request) -> dict:
         queued = False
     return {"queued": queued, "ftc_url": "https://reportfraud.ftc.gov",
             "ftc_summary": ftc_summary(body.text, body.sender, body.outcome),
-            "next_step": NEXT_STEPS.get(record["outcome"], "")}
+            "next_step": next_step(record["outcome"])}
+
+
+@app.post("/recovery")
+def recovery(body: RecoveryIn, request: Request) -> dict:
+    """'I already responded': ordered steps for what already happened, most urgent first."""
+    enforce_rate_limit(request, analyze_limiter, "analyze")
+    return recovery_plan(body.happened)
+
+
+@app.post("/outcome")
+def outcome(body: OutcomeIn, request: Request) -> dict:
+    """The follow-up answer for a case code: what happened, and whether the job turned out real."""
+    enforce_rate_limit(request, report_limiter, "outcome")
+    ok = record_outcome(body.case_code, body.happened, body.verified)
+    if not ok:
+        raise HTTPException(status_code=422, detail="Unknown values in happened or verified.")
+    lost = [h for h in body.happened if h != "nothing"]
+    return {"recorded": True, "recovery": recovery_plan(lost) if lost else None}
+
+
+@app.post("/verify-job")
+def verify_job(body: VerifyIn, request: Request) -> dict:
+    """
+    Is the job on the company's own job board, does the recruiter's address fit the company, and the script for
+    calling the company to check. A missing listing is a note for a reviewer, never a verdict.
+    """
+    enforce_rate_limit(request, analyze_limiter, "analyze")
+    board = check_job_board(body.company, body.title, body.urls) if body.check_board and body.title else None
+    findings = sender_findings(body.recruiter_email, body.recruiter_name, "", body.company)
+    note = board_finding(board or {}, body.company, body.title)
+    if note:
+        findings.append(note)
+    return {"board": board, "findings": findings,
+            "script": verification_script(body.company, body.title, body.recruiter_name, body.channel)}

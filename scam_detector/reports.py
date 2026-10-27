@@ -30,9 +30,10 @@ from pathlib import Path
 from typing import Optional
 
 from .intel.domains import registrable_domain
+from .recovery import HAPPENED
 from .rules import FREE_MAIL
 
-OUTCOMES = ("not_replied", "replied", "shared_personal_info", "deposited_check", "sent_money", "shipped_packages")
+OUTCOMES = ("not_replied",) + tuple(HAPPENED)
 MAX_TEXT = 8000
 
 _EMAIL = re.compile(r"[\w.+-]+@([a-z0-9-]+(?:\.[a-z0-9-]+)+)", re.I)
@@ -95,14 +96,6 @@ def append_report(record: dict, path) -> None:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
-NEXT_STEPS = {
-    "deposited_check": "Call your bank now and tell them the check may be fake. Don't spend or send any of that money.",
-    "sent_money": "Call your bank or the payment app now and ask them to stop or reverse the payment.",
-    "shared_personal_info": ("Freeze your credit with Equifax, Experian and TransUnion (free), and go to "
-                             "identitytheft.gov for a recovery plan."),
-    "shipped_packages": "Stop shipping anything, keep the labels and receipts, and report it to the police.",
-    "replied": "Stop replying, and don't send documents, money or account details.",
-}
 
 
 def ftc_summary(text: str, sender: str = "", outcome: str = "") -> str:
