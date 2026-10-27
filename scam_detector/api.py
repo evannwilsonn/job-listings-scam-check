@@ -22,7 +22,7 @@ from typing import List
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from . import ml
+from . import guardrails, learning, ml
 from .conversation import analyze_thread
 from .attestations import attestation_findings
 from .employer import board_finding, check_job_board, screen_employer, verification_script
@@ -41,6 +41,7 @@ _intel_cache = MemoryCache()
 report_limiter = RateLimiter(max_attempts=10, window_seconds=600)
 
 app = FastAPI(title="Job Scam Detector", version="1.0")
+learning.configure_serving()      # the active retrained model (or the shipped one), staged releases, and drift recording
 
 # The embeddable checker (web/embed.js) runs on a career center's own site and calls this API from there. Browsers
 # only allow that for origins listed here: ALLOWED_ORIGINS="https://career.fsu.edu,https://lurecheck.com". Empty
@@ -164,15 +165,22 @@ def analyze(posting: PostingIn, request: Request) -> dict:
     # already reports new_domain for domains in the text, so the intel copy is dropped to avoid counting it twice.
     extra = sender_findings(posting.sender, posting.sender_name, posting.reply_to, posting.company, posting.description)
     have = {f["rule_id"] for f in out["findings"]}
+    rules = guardrails.rules_for(posting.school)        # the career center's trusted and blocked domains
     intel = intel_findings(posting.description, [], posting.sender, posting.company, cache=_intel_cache,
-                           network=posting.run_network)
+                           protected_extra=guardrails.protected(rules), network=posting.run_network)
     extra += [f for f in intel if f["rule_id"] not in have and f["rule_id"] != "new_domain"]
     # The network (reviewer-confirmed scam contacts across schools) and what the named employer attested.
     extra += network_findings(posting.description, posting.sender)
+    # Template memory: the wording of scams reviewers confirmed, matched on the next check (learning.py, memory.py).
+    tm = learning.template_finding("\n".join(x for x in (posting.title, posting.description) if x))
+    if tm:
+        extra.append(tm)
     _, att = attestation_findings(posting.company, posting.sender, posting.description, out["findings"] + extra)
     extra += att
-    if extra:
+    if extra or rules["trusted"] or rules["blocked"]:
         out["findings"].extend(extra)
+        out["findings"] = guardrails.apply(out["findings"], rules, text=posting.description, sender=posting.sender,
+                                           school_name=guardrails.school_name(posting.school))
         out["score"] = min(100, sum(f.get("weight", 0) for f in out["findings"]))
         out["band"], out["verdict"] = _band(out["score"], any(f.get("severity") == "critical" for f in out["findings"]))
     if posting.second_look:

@@ -10,6 +10,20 @@ Where reports, cases and outcomes live: Postgres when DATABASE_URL is set, JSONL
     store.add_outcome(record) -> bool                    False if the case is unknown
     store.cases() / store.outcomes() -> [record]         what outcome_report reads
 
+The learning loop (learning.py) also keeps its state here, with times as Unix seconds:
+
+    store.labels() / store.add_label(rec) / store.set_label_splits({id: split})    reviewer labels (masked text)
+    store.templates() / store.add_template(entry) / store.forget_template(text_key)    template memory (memory.py)
+    store.save_model(spec) / store.get_model(version)     model files, so every server serves the same ones
+    store.release() / store.set_release(**kw) / store.log_release(event, version, detail) / store.release_log(n)
+    store.start_run(trigger, live_labels) -> id / store.finish_run(id, **kw) / store.last_run() / store.runs(n)
+    store.add_traffic(rec) / store.traffic(since) / store.prune_traffic(before)     drift and shadow comparisons
+
+A career center's own lists (guardrails.py):
+
+    store.school_rules(school) -> [{kind, value, reason, added_by, added_at}]          active entries
+    store.add_school_rule(school, kind, value, added_by, reason="") / store.remove_school_rule(school, kind, value, removed_by)
+
 Both backends take and return the same dict shapes, so the API, the reviewer tools and the reports don't care which
 one is in use. The file backend is for development and tests; production sets DATABASE_URL to a Neon role that is a
 member of lurecheck_app (see db/migrations/001_initial.sql).
@@ -26,17 +40,32 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import time
 from pathlib import Path
 from typing import List, Optional
 
 DATA = Path(os.environ.get("LURECHECK_DATA", Path(__file__).resolve().parent / "data"))
 DECISIONS = ("confirmed", "dismissed")
+RELEASE_DEFAULT = {"stage": "none", "lane": "full", "candidate_version": None, "active_version": None, "previous_version": None,
+                   "run_id": None, "pct": 0, "created_at": None, "stage_started": None, "note": ""}
+_RELEASE_COLS = tuple(RELEASE_DEFAULT)
 _KINDS = (("domains", "domain", False), ("wallets", "wallet", False), ("email_hashes", "email", True),
           ("phone_hashes", "phone", True))
 
 
 def _now() -> str:
     return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _epoch(t) -> Optional[float]:
+    return t.timestamp() if t is not None else None
+
+
+def _check_rule(kind: str, added_by: str) -> None:
+    if kind not in ("trusted_domain", "blocked_domain"):
+        raise ValueError("kind must be trusted_domain or blocked_domain")
+    if not (added_by or "").strip():
+        raise ValueError("say who is adding it")
 
 
 def _check_decision(decision: str, reviewer: str) -> None:
@@ -86,14 +115,21 @@ class JsonlStore:
         return [{**r, "id": str(i)} for i, r in enumerate(self._read(self.reports_path))
                 if (not status or r.get("status") == status) and (not school or r.get("school") == school)]
 
-    def decide_report(self, report_id, decision: str, reviewer: str, note: str = "") -> dict:
+    def decide_report(self, report_id, decision: str, reviewer: str, note: str = "", real: bool = False) -> dict:
+        """real=True with "dismissed": the reviewer says it's a real job, which also becomes a "legit" training label."""
         _check_decision(decision, reviewer)
         rows = self._read(self.reports_path)
         r = rows[int(report_id)]
+        if r.get("status", "reported") != "reported":
+            raise ValueError(f"report {report_id} was already reviewed")
         r.update({"status": decision, "reviewer": reviewer.strip()[:80], "note": (note or "").strip()[:500],
                   "reviewed_at": _now()})
         self._write(rows)
-        return r
+        label = "scam" if decision == "confirmed" else "legit" if real else None
+        if label and r.get("text_masked"):
+            self.add_label({"label": label, "description": r["text_masked"], "source": "report" if label == "scam" else "report_real",
+                            "report_id": str(report_id), "school": r.get("school", ""), "reviewer": r["reviewer"]})
+        return {**r, "id": str(report_id)}
 
     def confirmed_reports(self, since: str = "", school: str = "") -> List[dict]:
         return [r for r in self.list_reports("confirmed", school) if not since or r.get("received", "") >= since]
@@ -139,6 +175,119 @@ class JsonlStore:
 
     def outcomes(self) -> List[dict]:
         return self._read(self.outcomes_path)
+
+    # ---- the learning loop (learning.py) ----
+
+    def _p(self, name: str) -> Path:
+        return self.cases_path.parent / name
+
+    def _rewrite(self, path: Path, rows: list) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
+        tmp.replace(path)
+
+    def labels(self) -> List[dict]:
+        return [{**r, "id": str(i)} for i, r in enumerate(self._read(self._p("labels.jsonl")))]
+
+    def add_label(self, rec: dict) -> None:
+        self._append(self._p("labels.jsonl"), {"title": "", "company": "", "school": "", "split": None, **rec, "at": time.time()})
+
+    def set_label_splits(self, splits: dict) -> None:
+        """Only labels without a place get one; a place never changes."""
+        rows = self._read(self._p("labels.jsonl"))
+        for i, r in enumerate(rows):
+            if not r.get("split") and str(i) in splits:
+                r["split"] = splits[str(i)]
+        self._rewrite(self._p("labels.jsonl"), rows)
+
+    def templates(self) -> List[dict]:
+        return self._read(self._p("templates.jsonl"))          # memory.py's replay format (entries and forget ops)
+
+    def add_template(self, entry: dict) -> None:
+        self._append(self._p("templates.jsonl"), entry)
+
+    def forget_template(self, text_key: str) -> None:
+        self._append(self._p("templates.jsonl"), {"op": "forget", "key": text_key})
+
+    def save_model(self, spec: dict) -> None:
+        p = self._p("models") / f"{spec['version']}.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(spec, separators=(",", ":"), sort_keys=True), encoding="utf-8")
+
+    def get_model(self, version: str) -> Optional[dict]:
+        p = self._p("models") / f"{version}.json"
+        return json.loads(p.read_text(encoding="utf-8")) if version and p.exists() else None
+
+    def release(self) -> dict:
+        p = self._p("release.json")
+        return {**RELEASE_DEFAULT, **(json.loads(p.read_text(encoding="utf-8")) if p.exists() else {})}
+
+    def set_release(self, **kw) -> None:
+        bad = set(kw) - set(_RELEASE_COLS)
+        if bad:
+            raise ValueError(f"unknown release fields {bad}")
+        p = self._p("release.json")
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({**self.release(), **kw}), encoding="utf-8")
+
+    def log_release(self, event: str, version: Optional[str], detail: str = "") -> None:
+        self._append(self._p("release_log.jsonl"), {"at": time.time(), "event": event, "version": version, "detail": detail[:2000]})
+
+    def release_log(self, limit: int = 20) -> List[dict]:
+        return list(reversed(self._read(self._p("release_log.jsonl"))))[:limit]
+
+    def start_run(self, trigger: str, live_labels: int = 0) -> str:
+        runs = self._read(self._p("runs.jsonl"))
+        self._append(self._p("runs.jsonl"), {"id": str(len(runs)), "started_at": time.time(), "trigger": trigger, "status": "running",
+                                             "live_labels": live_labels, "train_rows": 0, "version": None, "report": ""})
+        return str(len(runs))
+
+    def finish_run(self, run_id, **kw) -> None:
+        runs = self._read(self._p("runs.jsonl"))
+        runs[int(run_id)].update({**kw, "finished_at": time.time()})
+        self._rewrite(self._p("runs.jsonl"), runs)
+
+    def runs(self, limit: int = 20) -> List[dict]:
+        return list(reversed(self._read(self._p("runs.jsonl"))))[:limit]
+
+    def last_run(self) -> Optional[dict]:
+        done = [r for r in self._read(self._p("runs.jsonl")) if r.get("status") in ("candidate", "refused")]
+        return max(done, key=lambda r: r["started_at"]) if done else None
+
+    def add_traffic(self, rec: dict) -> None:
+        self._append(self._p("traffic.jsonl"), {"at": time.time(), "other": None, "other_p": None, "other_flag": None, **rec})
+
+    def traffic(self, since: float = 0.0) -> List[dict]:
+        return [r for r in self._read(self._p("traffic.jsonl")) if r.get("at", 0) > since]
+
+    def prune_traffic(self, before: float) -> None:
+        p = self._p("traffic.jsonl")
+        if p.exists():
+            self._rewrite(p, [r for r in self._read(p) if r.get("at", 0) >= before])
+
+    # ---- a career center's own lists (guardrails.py) ----
+
+    def school_rules(self, school: str) -> List[dict]:
+        return [r for r in self._read(self._p("school_rules.jsonl")) if r["school"] == school and r.get("status") == "active"]
+
+    def add_school_rule(self, school: str, kind: str, value: str, added_by: str, reason: str = "") -> None:
+        _check_rule(kind, added_by)
+        if any(r["kind"] == kind and r["value"] == value for r in self.school_rules(school)):
+            return
+        self._append(self._p("school_rules.jsonl"), {"school": school, "kind": kind, "value": value, "reason": reason[:300],
+                                                     "added_by": added_by.strip()[:80], "added_at": time.time(), "status": "active"})
+
+    def remove_school_rule(self, school: str, kind: str, value: str, removed_by: str) -> bool:
+        p = self._p("school_rules.jsonl")
+        rows, hit = self._read(p), False
+        for r in rows:
+            if r["school"] == school and r["kind"] == kind and r["value"] == value and r.get("status") == "active":
+                r.update({"status": "removed", "removed_by": removed_by.strip()[:80], "removed_at": time.time()})
+                hit = True
+        if hit:
+            self._rewrite(p, rows)
+        return hit
 
 
 # ---------------------------------------------------------------- Postgres
@@ -212,7 +361,7 @@ class PostgresStore:
             cur.execute(self._REPORT_SQL, {"status": status or "", "school": school or "", "since": ""})
             return [self._record(r) for r in cur.fetchall()]
 
-    def decide_report(self, report_id, decision: str, reviewer: str, note: str = "") -> dict:
+    def decide_report(self, report_id, decision: str, reviewer: str, note: str = "", real: bool = False) -> dict:
         _check_decision(decision, reviewer)
         reviewer, note = reviewer.strip()[:80], (note or "").strip()[:500]
         with self._conn() as conn, conn.cursor() as cur:
@@ -231,6 +380,9 @@ class PostgresStore:
                 if text:
                     cur.execute("INSERT INTO labels (label, description, source, report_id, school_id, reviewer) "
                                 "VALUES ('scam', %s, 'report', %s, %s, %s)", (text, int(report_id), school, reviewer))
+            elif real and text:                         # the reviewer says it's a real job: a "legit" training label
+                cur.execute("INSERT INTO labels (label, description, source, report_id, school_id, reviewer) "
+                            "VALUES ('legit', %s, 'report_real', %s, %s, %s)", (text, int(report_id), school, reviewer))
             cur.execute(self._REPORT_SQL.replace("WHERE (", "WHERE r.id = %(id)s AND ("),
                         {"id": int(report_id), "status": "", "school": "", "since": ""})
             return self._record(cur.fetchone())
@@ -315,6 +467,176 @@ class PostgresStore:
             cur.execute("SELECT case_hash, answered_on, happened, verified FROM outcomes ORDER BY answered_on, id")
             return [{"case": c, "date": d.isoformat(), "happened": list(h), "verified": v}
                     for c, d, h, v in cur.fetchall()]
+
+    # ---- the learning loop (learning.py) ----
+
+    def labels(self) -> List[dict]:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("SELECT id, label, title, company, description, source, coalesce(school_id, ''), reviewer, created_at, "
+                        "split FROM labels ORDER BY id")
+            return [{"id": str(i), "label": l, "title": t, "company": c, "description": d, "source": s, "school": sc,
+                     "reviewer": r, "at": _epoch(at), "split": sp} for i, l, t, c, d, s, sc, r, at, sp in cur.fetchall()]
+
+    def set_label_splits(self, splits: dict) -> None:
+        """Only labels without a place get one; a place never changes."""
+        if not splits:
+            return
+        with self._conn() as conn, conn.cursor() as cur:
+            for lid, split in splits.items():
+                cur.execute("UPDATE labels SET split = %s, holdout = %s WHERE id = %s AND split IS NULL",
+                            (split, split == "holdout", int(lid)))
+
+    def add_label(self, rec: dict) -> None:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("INSERT INTO labels (label, title, company, description, source, report_id, school_id, reviewer) "
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                        (rec["label"], rec.get("title", ""), rec.get("company", ""), rec["description"], rec.get("source", "manual"),
+                         int(rec["report_id"]) if rec.get("report_id") else None, self._school(cur, rec.get("school", "")),
+                         rec["reviewer"]))
+
+    @staticmethod
+    def _signed(x: int) -> int:
+        return x - 2 ** 64 if x >= 2 ** 63 else x
+
+    def templates(self) -> List[dict]:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("SELECT id, coalesce(text_key, ''), sketch, kid, coalesce(title, ''), created_at, coalesce(school_id, '') "
+                        "FROM templates WHERE status = 'active' ORDER BY id")
+            return [{"key": k or f"t{i}", "sketch": sorted(x + 2 ** 64 if x < 0 else x for x in sk), "kid": kid, "title": t,
+                     "when": at.date().isoformat(), "source": f"school:{sc}" if sc else "reviewer", "note": ""}
+                    for i, k, sk, kid, t, at, sc in cur.fetchall()]
+
+    def add_template(self, entry: dict) -> None:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("INSERT INTO templates (report_id, school_id, title, sketch, kid, text_key) VALUES (%s, %s, %s, %s, %s, %s)",
+                        (int(entry["report_id"]) if entry.get("report_id") else None, self._school(cur, entry.get("school", "")),
+                         entry.get("title") or None, [self._signed(x) for x in entry["sketch"]], entry.get("kid", "0"), entry["key"]))
+
+    def forget_template(self, text_key: str) -> None:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE templates SET status = 'forgotten' WHERE text_key = %s", (text_key,))
+
+    def save_model(self, spec: dict) -> None:
+        from psycopg.types.json import Jsonb
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("INSERT INTO models (version, spec) VALUES (%s, %s) ON CONFLICT (version) DO NOTHING",
+                        (spec["version"], Jsonb(spec)))
+
+    def get_model(self, version: str) -> Optional[dict]:
+        if not version:
+            return None
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("SELECT spec FROM models WHERE version = %s", (version,))
+            row = cur.fetchone()
+        return row[0] if row else None
+
+    def release(self) -> dict:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(_RELEASE_COLS)} FROM model_release WHERE id = 1")
+            row = cur.fetchone()
+        if not row:
+            return dict(RELEASE_DEFAULT)
+        rec = dict(zip(_RELEASE_COLS, row))
+        for k in ("created_at", "stage_started"):
+            rec[k] = _epoch(rec[k])
+        rec["run_id"] = str(rec["run_id"]) if rec["run_id"] is not None else None
+        return rec
+
+    def set_release(self, **kw) -> None:
+        bad = set(kw) - set(_RELEASE_COLS)
+        if bad:
+            raise ValueError(f"unknown release fields {bad}")
+        vals = []
+        for k, v in kw.items():
+            if k in ("created_at", "stage_started") and v is not None:
+                v = dt.datetime.fromtimestamp(v, dt.timezone.utc)
+            elif k == "run_id" and v is not None:
+                v = int(v)
+            vals.append(v)
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("INSERT INTO model_release (id) VALUES (1) ON CONFLICT (id) DO NOTHING")   # the one row always exists
+            cur.execute(f"UPDATE model_release SET {', '.join(k + ' = %s' for k in kw)} WHERE id = 1", vals)
+
+    def log_release(self, event: str, version: Optional[str], detail: str = "") -> None:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("INSERT INTO release_log (event, version, detail) VALUES (%s, %s, %s)", (event, version, detail[:2000]))
+
+    def release_log(self, limit: int = 20) -> List[dict]:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("SELECT at, event, version, detail FROM release_log ORDER BY id DESC LIMIT %s", (limit,))
+            return [{"at": _epoch(a), "event": e, "version": v, "detail": d} for a, e, v, d in cur.fetchall()]
+
+    def start_run(self, trigger: str, live_labels: int = 0) -> str:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("INSERT INTO retrain_runs (trigger, live_labels) VALUES (%s, %s) RETURNING id", (trigger, live_labels))
+            return str(cur.fetchone()[0])
+
+    def finish_run(self, run_id, **kw) -> None:
+        cols = [k for k in ("status", "version", "train_rows", "report") if k in kw]
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute(f"UPDATE retrain_runs SET finished_at = now(){''.join(', ' + c + ' = %s' for c in cols)} WHERE id = %s",
+                        [kw[c] for c in cols] + [int(run_id)])
+
+    _RUN_SQL = "SELECT id, started_at, trigger, status, version, live_labels, train_rows, report FROM retrain_runs"
+
+    @staticmethod
+    def _run(row) -> dict:
+        i, at, trig, st, v, live, rows, rep = row
+        return {"id": str(i), "started_at": _epoch(at), "trigger": trig, "status": st, "version": v, "live_labels": live,
+                "train_rows": rows, "report": rep}
+
+    def runs(self, limit: int = 20) -> List[dict]:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute(self._RUN_SQL + " ORDER BY id DESC LIMIT %s", (limit,))
+            return [self._run(r) for r in cur.fetchall()]
+
+    def last_run(self) -> Optional[dict]:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute(self._RUN_SQL + " WHERE status IN ('candidate', 'refused') ORDER BY started_at DESC LIMIT 1")
+            row = cur.fetchone()
+        return self._run(row) if row else None
+
+    def add_traffic(self, rec: dict) -> None:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("INSERT INTO model_traffic (key, served, p, flag, novelty, other, other_p, other_flag) "
+                        "VALUES (%(key)s, %(served)s, %(p)s, %(flag)s, %(novelty)s, %(other)s, %(other_p)s, %(other_flag)s)",
+                        {"other": None, "other_p": None, "other_flag": None, **rec})
+
+    def traffic(self, since: float = 0.0) -> List[dict]:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("SELECT at, key, served, p, flag, novelty, other, other_p, other_flag FROM model_traffic "
+                        "WHERE at > to_timestamp(%s) ORDER BY id", (since,))
+            keys = ("at", "key", "served", "p", "flag", "novelty", "other", "other_p", "other_flag")
+            return [{**dict(zip(keys, r)), "at": _epoch(r[0])} for r in cur.fetchall()]
+
+    def prune_traffic(self, before: float) -> None:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("DELETE FROM model_traffic WHERE at < to_timestamp(%s)", (before,))
+
+    # ---- a career center's own lists (guardrails.py) ----
+
+    def school_rules(self, school: str) -> List[dict]:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("SELECT kind, value, reason, added_by, added_at FROM school_rules WHERE school_id = %s AND status = 'active' "
+                        "ORDER BY id", (school,))
+            return [{"school": school, "kind": k, "value": v, "reason": r, "added_by": b, "added_at": _epoch(a), "status": "active"}
+                    for k, v, r, b, a in cur.fetchall()]
+
+    def add_school_rule(self, school: str, kind: str, value: str, added_by: str, reason: str = "") -> None:
+        _check_rule(kind, added_by)
+        with self._conn() as conn, conn.cursor() as cur:
+            if self._school(cur, school) is None:
+                raise ValueError(f"unknown school {school!r}")
+            cur.execute("INSERT INTO school_rules (school_id, kind, value, reason, added_by) VALUES (%s, %s, %s, %s, %s) "
+                        "ON CONFLICT (school_id, kind, value) WHERE status = 'active' DO NOTHING",
+                        (school, kind, value, reason[:300], added_by.strip()[:80]))
+
+    def remove_school_rule(self, school: str, kind: str, value: str, removed_by: str) -> bool:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE school_rules SET status = 'removed', removed_by = %s, removed_at = now() "
+                        "WHERE school_id = %s AND kind = %s AND value = %s AND status = 'active'",
+                        (removed_by.strip()[:80], school, kind, value))
+            return cur.rowcount > 0
 
 
 _STORE = None

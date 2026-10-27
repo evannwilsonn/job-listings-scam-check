@@ -39,6 +39,7 @@ import argparse
 import datetime as dt
 import hashlib
 import json
+import os
 import random
 import sys
 from pathlib import Path
@@ -57,7 +58,7 @@ try:
 except ImportError:                                                   # pragma: no cover
     raise SystemExit("Training needs scikit-learn: pip install -r requirements-dev.txt")
 
-DATA = Path(__file__).resolve().parent.parent / "data"
+DATA = Path(os.environ.get("LURECHECK_DATA", Path(__file__).resolve().parent.parent / "data"))
 MODELS = ml.MODEL_PATH.parent
 TRAIN_FILES = ["field_2026_09_tune.jsonl", "field_2026_10_tune.jsonl", "boards_2026_10_train.jsonl", "boards_2026_10_rules.jsonl",
                "labeled_seed.jsonl", "real_corpus_clean.jsonl", "external_scams.jsonl", "candidates_2026_10_22.jsonl",

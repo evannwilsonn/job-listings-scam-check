@@ -94,6 +94,23 @@ Postgres (`scam_detector/store.py`); without it they fall back to JSONL files in
 Confirming a report there also confirms its indicators and adds it to `labels` for the next retrain. Use a Neon branch to test a migration or a retrain against a copy of
 production.
 
+- The learning loop (`scam_detector/learning.py`): confirming a report adds it to the training labels and to the
+  template memory, so the next copy of that script is flagged on the next check; `review_queue --set N dismissed --real`
+  records a real job. `python -m scam_detector.tools.learn tick`, scheduled every 30 minutes where `DATABASE_URL` and
+  the labeled corpora (`LURECHECK_DATA`) are available, retrains when the evidence calls for it and moves a new model
+  through shadow, staged rollout and watch, rolling back on its own. `learn status` shows where it stands. Model files
+  live in the database (migration 003), so the API always serves the active one. See `scam_detector/MODEL.md`.
+- A career center's own lists (`scam_detector/guardrails.py`, `tools/school_rules.py`, migration 004): `trust` an
+  employer domain it has verified, and warnings about that domain's infrastructure (new, unregistered, no mail,
+  look-alike) stop counting while look-alikes of it start being flagged; `block` a domain and any check that uses it gets
+  a critical finding. Trust never overrides scam evidence (text rules, confirmed contacts, partner reports, template
+  matches, blocklists). Entries cover the host and its subdomains, never its parent. `/analyze` applies the list for the
+  `school` it's given; `schools.json` `employer_domains` count as trusted.
+- `python -m scam_detector.tools.trends --school fsu` writes the monthly trends report for a career center
+  (`scam_detector/trends.py`): confirmed scams by scheme against last month, how many today's detector catches on its
+  own and the scripts it still misses, how scammers made contact, confirmed domains and how many schools saw them, what
+  students told the follow-up happened, and what the detector learned. Markdown, ready to forward; `--json` for a
+  dashboard. Counts only reviewer-confirmed scams and names no student.
 - `POST /lookup` answers "has this phone number, email, website or wallet been confirmed as a scam?" across every
   LureCheck school, and `/analyze` adds a critical finding when a message contains one
   (`scam_detector/network.py`). Only reviewer-confirmed indicators ever match.

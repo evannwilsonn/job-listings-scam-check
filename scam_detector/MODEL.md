@@ -62,7 +62,25 @@ it writes a candidate only if all of these hold:
 The threshold comes from cross-validation on the training rows: the lowest value that flags no rules-quiet legit row, plus a
 0.1 margin because those rows are few, and never below 0.5. Every run writes `models/TRAINING_REPORT.md`.
 
-## How it keeps learning (learning.py)
+## The learning loop in LureCheck (`learning.py`, `tools/learn.py`)
+
+Everything below this section first ran on the NoleCareerShield site; LureCheck runs the same loop on its own store
+(Postgres in production, files in development), with no web admin pages yet:
+
+| Step | In LureCheck |
+|---|---|
+| Labels | `tools/review_queue.py`: `confirmed` makes a scam label; `dismissed --real` makes a legit one. Nothing a student says becomes a label. |
+| Template memory | Confirming stores a sketch of the script (`templates` table); `/analyze` flags the next copy (`confirmed_scam_template` / `_copy`). `--real` forgets it. |
+| Train / holdout | Each label gets a permanent place (`labels.split`) on first use; copies of one script share the first copy's place, so a scam wave is never split. |
+| Retrain | `learn tick` (schedule it every 30 minutes) retrains monthly, early on evidence or drift, and in the fast lane within hours when new labels include a scam the detector misses. |
+| Gate | `train_model.py`'s gate, then the release gate against the active model (`learning.gate`). |
+| Release | Model files live in the `models` table so the API and the retrain job can run on different machines. Shadow, rollout to a stable slice, watch, automatic rollback (`model_release`, `release_log`). `learn release next/stop/rollback` for a person. |
+| Drift | `/analyze` records the model's score and the share of unseen words (`model_traffic`, text never stored); `learn status` compares them with the model's training reference. |
+
+Retraining needs scikit-learn and the labeled corpora (`LURECHECK_DATA`); serving needs neither. `LEARN_TRAFFIC=off`
+stops the traffic recording.
+
+## How it keeps learning on the NoleCareerShield site
 
 The loop runs on the live site. Nobody has to remember to retrain.
 
@@ -133,6 +151,29 @@ and rolls back as soon as it catches fewer fresh confirmed scams, flags more fre
 real traffic far more often than the active model (over twice its rate and 5 points above it).
 `MODEL_AUTO_RELEASE=0` makes each step wait for a reviewer; rollback is always automatic. Every step is in
 `release_log` and on `/admin/model`.
+
+## Tried and not adopted (Oct 27, 2026)
+
+Same features, same threshold rule as the gate (lowest that flags no rules-quiet legit row in grouped CV, + 0.1), scored
+on the frozen holdouts (28 scams, 42 legit) and the hard-legit set. Run on the NoleCareerShield copy of the corpus (306
+training rows), so compare rows with each other, not with the shipped model's numbers.
+
+| Model | Holdout scams caught (rules alone 17) | New false alarms | CV AUC / AP on our rows |
+|---|---|---|---|
+| **Logistic regression (shipped)** | **22/28** | 1 | 0.992 / 0.983 |
+| Linear SVM, calibrated | 22/28 | 1 | 0.993 / 0.984 |
+| Random forest | 19/28 | 3 | 0.972 / 0.942 |
+| XGBoost | 19/28 | 1 | 0.987 / 0.975 |
+| LR + EMSCAD (866 fake, 3,000 real postings) at 0.2 weight | 19/28 | 0 | 0.976 / 0.966 |
+| LR + EMSCAD at 0.5 weight | 18/28 | 0 | 0.974 / 0.961 |
+
+- The SVM ties and gives up the per-feature explanations and the browser port; the tree models catch fewer and need far
+  more data. Logistic regression stays.
+- EMSCAD (2012-14 corporate job-board fraud) teaches the model a different kind of fake: its scores on our own rows get
+  worse, the threshold rises to stay clear of our real listings, and it catches fewer student scams. It removes the one
+  false alarm only by flagging less. Not used. Worth retrying only as a separate, lower-weight feature, not as labels.
+- Script: kept outside the repo (it needs the private corpora); rerun by repeating these configurations with
+  `train_model`'s functions.
 
 ## Uncertainty (conformal prediction)
 

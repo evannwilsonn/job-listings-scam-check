@@ -4,6 +4,11 @@ Review student reports: the human step between a report and the network.
     python -m scam_detector.tools.review_queue                      # list pending reports
     python -m scam_detector.tools.review_queue --set 3 confirmed --reviewer "E. Wilson" --note "same script as wave 12"
     python -m scam_detector.tools.review_queue --set 4 dismissed --reviewer "E. Wilson" --note "real staffing agency"
+    python -m scam_detector.tools.review_queue --set 5 dismissed --real --reviewer "E. Wilson"     # a real job: a "legit" label
+
+Confirming also teaches the detector at once: the script's wording goes into the template memory, so the next copy is
+flagged on the next check, and the label counts toward the next retrain (scam_detector/learning.py). --real marks a
+dismissed report as a real job; that becomes a "legit" training label and forgets the same text from the template memory.
 
 Uses the database when DATABASE_URL is set (confirming there also confirms the report's indicators and adds it to the
 training labels), otherwise the JSONL queue /report writes; --queue picks a file explicitly. Only reports
@@ -58,14 +63,19 @@ def main(argv=None) -> int:
     ap.add_argument("--note", default="")
     ap.add_argument("--all", action="store_true", help="list reviewed reports too")
     ap.add_argument("--school", default="")
+    ap.add_argument("--real", action="store_true", help="with dismissed: it's a real job (a 'legit' training label)")
     a = ap.parse_args(argv)
     store = JsonlStore(reports_path=Path(a.queue)) if a.queue else get_store()
     if a.set:
         try:
-            r = store.decide_report(a.set[0], a.set[1], a.reviewer, a.note)
+            if a.real and a.set[1] != "dismissed":
+                raise ValueError("--real goes with dismissed")
+            r = store.decide_report(a.set[0], a.set[1], a.reviewer, a.note, real=a.real)
         except (ValueError, IndexError) as e:
             print(f"error: {e}", file=sys.stderr)
             return 2
+        from .. import learning
+        learning.after_decision(r, a.set[1], a.real, st=store)
         print(f"report {a.set[0]} -> {r['status']} by {r['reviewer']}")
         return 0
     for r in store.list_reports("" if a.all else "reported", a.school):
