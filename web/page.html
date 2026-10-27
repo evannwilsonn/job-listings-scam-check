@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Job Scam Check</title>
+<title>LureCheck · Is this job real?</title>
 <meta name="description" content="Paste a job posting or recruiter message and see whether it matches known job-scam patterns. Runs entirely in your browser.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -95,8 +95,8 @@ footer a{color:var(--gold)}
 <div class="wrap">
   <header>
     <svg width="34" height="34" viewBox="0 0 40 40" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FBE7AE"/><stop offset=".45" stop-color="#E2BE6A"/><stop offset="1" stop-color="#C99B45"/></linearGradient></defs><path d="M20 3 L34 8 V19 C34 28 28 34 20 37 C12 34 6 28 6 19 V8 Z" fill="#782F40"/><path d="M20 11 L22.4 17.6 L29 20 L22.4 22.4 L20 29 L17.6 22.4 L11 20 L17.6 17.6 Z" fill="url(#g)"/></svg>
-    <span class="brand">Job Scam <b>Check</b></span>
-    <span class="tag">Rules {{RULEPACK_VERSION}}</span>
+    <span class="brand">Lure<b>Check</b></span>
+    <span class="tag" id="ver-tag">Rules {{RULEPACK_VERSION}}</span>
   </header>
 
   <h1>Is this job real?</h1>
@@ -134,12 +134,15 @@ footer a{color:var(--gold)}
   <footer>
     A pattern match is a reason to slow down, not proof either way. A clean result can still be a scam, so always confirm the job on the employer's own website before sharing personal details.
     Report job scams at <a href="https://reportfraud.ftc.gov" rel="noopener">reportfraud.ftc.gov</a>.
-    Rulepack {{RULEPACK_VERSION}} · {{RULE_COUNT}} active rules.
+    <span id="ver-foot">Rulepack {{RULEPACK_VERSION}} · {{RULE_COUNT}} active rules.</span>
   </footer>
 </div>
 
 
-<script>window.NCS_RULEPACK = {{RULEPACK_JSON}};</script>
+<script id="lurecheck-data">
+window.LURECHECK_RULEPACK = {{RULEPACK_JSON}};
+window.LURECHECK_MODEL = {{MODEL_JSON}};
+</script>
 <script>
 {{ENGINE_JS}}
 </script>
@@ -203,7 +206,8 @@ footer a{color:var(--gold)}
       }
       return hit;
     };
-    for (const f of findings) for (const e of f.matched || []) add(e, f.severity === "critical" ? "mk-red" : "mk-amb");
+    // The model's reasons include traits like "urgency"; only its exact phrases (f.marks) are marked in the text.
+    for (const f of findings) for (const e of f.marks || f.matched || []) add(e, f.severity === "critical" ? "mk-red" : "mk-amb");
     const placed = cleared.filter(c => add(c.clause, "mk-grn"));
     if (!spans.length) return "";
     spans.sort((p, q) => p[0] - q[0]);
@@ -223,23 +227,24 @@ footer a{color:var(--gold)}
     if (!text) return;
     let r;
     if (mode === "message") {
-      r = NCS.check(text, $("sender").value);
+      r = LureCheck.check(text, $("sender").value);
     } else {
       const url = $("url").value.trim();
-      const s = NCS.scorePosting($("title").value.trim(), text, $("company").value.trim(), url ? [url] : []);
-      const extra = NCS.linkFindings(text + (url ? "\n" + url : ""));
+      const s = LureCheck.scorePosting($("title").value.trim(), text, $("company").value.trim(), url ? [url] : []);
+      const extra = LureCheck.linkFindings(text + (url ? "\n" + url : ""));
       const best = new Map();
       for (const f of s.findings.concat(extra)) if (!best.has(f.rule_id) || f.weight > best.get(f.rule_id).weight) best.set(f.rule_id, f);
       const findings = [...best.values()].sort((a, b) => ({critical:0,warning:1,note:2}[a.severity] - {critical:0,warning:1,note:2}[b.severity]) || b.weight - a.weight);
       const score = Math.min(100, findings.reduce((n, f) => n + f.weight, 0));
       const crit = findings.some(f => f.severity === "critical");
       const b = crit || score >= 65 ? "block" : score >= 35 ? "review" : score >= 15 ? "caution" : "clear";
-      let level = {clear: 0, caution: 1, review: 2, block: 3}[b];
-      if (s.lead_gen.flag && level < 1) level = 1;
-      const [key, title, advice] = NCS.LEVELS[level];
+      const level = LureCheck.levelFor(b, findings, s.lead_gen);
+      const [key, title, advice] = LureCheck.LEVELS[level];
       r = {level, key, title, advice, score, findings, lead_gen: s.lead_gen};
     }
-    const advice = r.level === 0 ? "Nothing here matches a known scam pattern. That isn't a guarantee: confirm the employer through their own website before sharing personal details." : r.advice;
+    const advice = r.level === 0 ? "Nothing here matches a known scam pattern. That isn't a guarantee: confirm the employer through their own website before sharing personal details."
+      : r.level === 1 && r.findings.length === 1 && r.findings[0].rule_id === "model_second_look"
+        ? "No rule matched, but the wording looks like scams we've seen. Verify the employer through a channel you find yourself before you reply." : r.advice;
     let html = `<div class="card verdict k-${r.key}">${gauge(r.score, r.key)}<div>
       <div class="lvl">${r.level === 0 ? "No match" : r.findings.length + " signal" + (r.findings.length === 1 ? "" : "s") + " found"}</div>
       <div class="vt">${esc(r.title)}</div><p class="advice">${esc(advice)}</p></div></div>`;
@@ -248,7 +253,7 @@ footer a{color:var(--gold)}
         <p>${esc(r.lead_gen.verdict)}</p><ul>${r.lead_gen.reasons.map(x => `<li>${esc(x.reason)}</li>`).join("")}</ul></div>`;
     }
     if (r.findings.length) html += `<h2>What we found</h2>` + r.findings.map(finding).join("");
-    html += marked(text.slice(0, 8000), r.findings, NCS.clearedMatches(text.slice(0, 8000), r.findings));
+    html += marked(text.slice(0, 8000), r.findings, LureCheck.clearedMatches(text.slice(0, 8000), r.findings));
     html += `<h2>What to do</h2><ul class="steps">${STEPS[r.level].map(s => `<li>${esc(s)}</li>`).join("")}</ul>`;
     $("result").innerHTML = html;
     $("result").scrollIntoView({behavior: "smooth", block: "start"});
@@ -262,6 +267,9 @@ footer a{color:var(--gold)}
     for (const k of ["title", "company", "url", "sender", "text"]) if (k in s) $(k).value = s[k];
     $("go").disabled = false; run();
   });
+  // Version labels come from the data the page actually runs, so they can't drift from it.
+  $("ver-tag").textContent = "Rules " + LureCheck.ruleset;
+  $("ver-foot").textContent = `Rulepack ${LureCheck.ruleset} · ${LureCheck.rules.length} active rules` + (LureCheck.model ? ` · model ${LureCheck.model}.` : ".");
   $("clear").addEventListener("click", () => {
     for (const k of ["title", "company", "url", "sender", "text"]) $(k).value = "";
     $("go").disabled = true; $("result").innerHTML = "";

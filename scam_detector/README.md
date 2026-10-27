@@ -45,7 +45,7 @@ free-mail addresses on a named employer, and URL structure (`enrichment/url_flow
 ```bash
 pip install -r requirements.txt
 uvicorn scam_detector.api:app --reload        # HTTP API
-python -m pytest -q tests                       # 35 tests
+python -m pytest -q tests                       # the full suite
 python -m scam_detector.tools.evaluate scam_detector/data/*.jsonl --observed
 python -m scam_detector.tools.regress          # the pass/fail gate
 ```

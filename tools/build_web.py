@@ -20,6 +20,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 RULEPACK = ROOT / "scam_detector" / "rulepack" / "core.json"
+MODEL = ROOT / "scam_detector" / "models" / "scam_model.json"
+# Model fields the browser needs. drift_ref and holdout are for the training tools only.
+MODEL_KEYS = ("format", "version", "threshold", "rule_scale", "rule_ids", "rule_coef", "vocab", "cvocab",
+              "shape_coef", "shape_scale", "intercept", "conformal", "trained_at")
 ENGINE = ROOT / "web" / "engine.js"
 PAGE = ROOT / "web" / "page.html"
 OUT = ROOT / "index.html"
@@ -40,19 +44,34 @@ def public_rulepack(core: dict) -> dict:
     return {"version": str(core.get("version", "unknown")), "rules": rules}
 
 
+def public_model() -> dict | None:
+    """The learned model as shipped to the browser, or None when there is no model file (rules only)."""
+    if not MODEL.exists():
+        return None
+    spec = json.loads(MODEL.read_text(encoding="utf-8"))
+    model = {k: spec[k] for k in MODEL_KEYS if k in spec}
+    model["trained_on"] = {"rows": spec.get("trained_on", {}).get("rows")}
+    return model
+
+
+def _json(obj) -> str:
+    # </script> inside a JSON string would end the script tag early; JSON-escape the slash.
+    return json.dumps(obj, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+
+
 def render() -> str:
     core = json.loads(RULEPACK.read_text(encoding="utf-8"))
     pack = public_rulepack(core)
     page = PAGE.read_text(encoding="utf-8")
     engine = ENGINE.read_text(encoding="utf-8").rstrip("\n")
-    # </script> inside a JSON string would end the script tag early; JSON-escape the slash.
-    pack_json = json.dumps(pack, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+    pack_json = _json(pack)
     if "</script" in engine.lower():
         raise SystemExit("web/engine.js must not contain the text '</script'")
     subs = {
         "{{RULEPACK_VERSION}}": pack["version"],
         "{{RULE_COUNT}}": str(len(pack["rules"])),
         "{{RULEPACK_JSON}}": pack_json,
+        "{{MODEL_JSON}}": _json(public_model()),
         "{{ENGINE_JS}}": engine,
     }
     for key, val in subs.items():
