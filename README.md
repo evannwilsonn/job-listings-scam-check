@@ -79,6 +79,18 @@ The main API routes:
   `tools/outcome_report.py` reports misses and false alarms from those answers
   (`scam_detector/followup.py`).
 
+## Database
+
+Postgres on Neon (project `lurecheck`, AWS us-east-1, branch `production`, database `lurecheck`). The schema is in
+`db/migrations/`; apply new files in order and record each in `schema_migrations`. It enforces the privacy rules
+itself: email addresses and phone numbers can only be stored as hashes, report text expires
+(`purge_expired_text()`, run daily), and an indicator can't be marked confirmed without a reviewer.
+
+The app connects as a login role that is a member of `lurecheck_app` (read, insert, update; no delete, no schema
+changes). Create one in the Neon console, run `GRANT lurecheck_app TO <role>;`, and put its connection string in
+the server's `DATABASE_URL`. Never commit it. Use a Neon branch to test a migration or a retrain against a copy of
+production.
+
 Reports go to a reviewer before they go anywhere: `tools/review_queue.py` marks
 each one confirmed or dismissed, and `tools/export_evidence.py` packages the
 confirmed indicators (domains and wallets in the clear, contacts hashed) with a
