@@ -113,7 +113,10 @@ def test_page_model_matches_python():
         py = _python(c)
         cases.append(dict(c, findings=[{"rule_id": f["rule_id"]} for f in py["findings"]], score=py["score"]))
     js = _run_node(cases)
+    private = _private_rules()
     for c, j in zip(cases, js):
+        if private & {f["rule_id"] for f in c["findings"]}:
+            continue                # server-only rules never fire in the page, and the page's model leaves them out
         text = ml.posting_text(c.get("title", ""), c.get("description", ""), c.get("company", ""), c.get("url", ""))
         assert j["shape"] == pytest.approx(ml.shape_features(text), abs=1e-9), c["description"][:80]
         pred = model.predict(c.get("title", ""), c.get("description", ""), c.get("company", ""), c.get("url", ""),
