@@ -123,9 +123,25 @@ def test_page_model_matches_python():
 
 
 @needs_node
+def _private_rules() -> set:
+    core = json.loads((ROOT / "scam_detector" / "rulepack" / "core.json").read_text(encoding="utf-8"))
+    return {r["id"] for r in core["rules"] if r.get("private")}
+
+
 def test_page_rules_match_python():
+    """The page runs every rule except the server-only ("private") ones, so it must agree on all the others."""
+    private = _private_rules()
     js = _run_node([dict(c, findings=[], score=0) for c in CASES])
     for c, j in zip(CASES, js):
         py = _python(c)
-        assert j["rules"] == sorted(f["rule_id"] for f in py["findings"]), c["description"][:80]
-        assert j["score"] == py["score"], c["description"][:80]
+        fired = {f["rule_id"] for f in py["findings"]}
+        assert j["rules"] == sorted(fired - private), c["description"][:80]
+        if not fired & private:
+            assert j["score"] == py["score"], c["description"][:80]
+
+
+def test_private_rules_are_not_shipped_in_the_page():
+    html = PAGE.read_text(encoding="utf-8")
+    data = re.search(r'<script id="lurecheck-data">(.*?)</script>', html, re.S).group(1)
+    pack = json.loads(re.search(r"window\.LURECHECK_RULEPACK = (\{.*?\});\n", data, re.S).group(1))
+    assert _private_rules() and not _private_rules() & {r["id"] for r in pack["rules"]}
