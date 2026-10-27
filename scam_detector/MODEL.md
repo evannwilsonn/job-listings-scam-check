@@ -183,6 +183,17 @@ labels that can't be ruled out, and `uncertain` when that set disagrees with the
 out while the threshold says no flag). Uncertain cases don't change any verdict; they go first in the label queue
 and count toward the drift alert on `/admin/intel`.
 
+### Asking for labels where they count (active learning, Oct 27, 2026)
+
+Reviewers only saw what students reported, and students report the obvious scams. The labels a logistic regression
+learns the most from are the ones near its decision boundary, so `api.py` now offers a reviewer's eyes on exactly
+those: when the rules are quiet and `ml.borderline(pred)` holds (the conformal set is unsettled, or the score is within
+`BORDERLINE` = 0.15 of the threshold) or the model flags on its own, `/analyze` returns `ask_review`. Nothing is
+stored unless the student taps the button; the text then travels the normal `/report` path (masked, 30-day retention)
+with `kind=borderline`, and the reviewer's decision lands in `labels` with source `borderline` / `borderline_real`.
+`ASK_REVIEW_PER_DAY` caps the offers so one scam wave can't fill the queue. This is uncertainty sampling with consent
+instead of retention; it is not semi-supervised learning (the model never labels its own training data).
+
 ## Red team
 
 `python -m scam_detector.tools.redteam` rewrites the holdout and archive scams the way a scammer dodging filters

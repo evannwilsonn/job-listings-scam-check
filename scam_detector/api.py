@@ -144,6 +144,8 @@ class ReportIn(BaseModel):
     sender: str = Field(default="", max_length=320)
     school: str = Field(default="", max_length=40)
     outcome: str = Field(default="", max_length=40, description="One of: " + ", ".join(OUTCOMES))
+    kind: str = Field(default="report", pattern="^(report|borderline)$",
+                      description="report: the student thinks it's a scam. borderline: the detector asked (ask_review)")
 
 
 @app.get("/health")
@@ -187,10 +189,19 @@ def analyze(posting: PostingIn, request: Request) -> dict:
         # The learned layer lives only on the server (the static page has no model). It adds a weight-0 finding when
         # it is confident and the rules weren't; it never changes the score or band, so it stays out of the scorer
         # and out of the Python/JS parity gate.
-        extra = ml.second_look(posting.title, posting.description, posting.company,
-                               findings=out["findings"], score=out["score"])
-        if extra:
-            out["findings"].append(extra)
+        looked = ml.assess(posting.title, posting.description, posting.company,
+                           findings=out["findings"], score=out["score"])
+        if looked["finding"]:
+            out["findings"].append(looked["finding"])
+        # Active learning, with consent. When the rules don't send this to a person but the model flags it or calls
+        # it close, the page offers "let a reviewer check it". Nothing is stored unless the student taps it (then it
+        # goes through /report with kind=borderline, masked like any report). A reviewer's label on a close call
+        # teaches the next model more than one on an obvious scam. Capped per day so a wave can't bury the queue.
+        pred = looked["pred"]
+        if pred and out["band"] not in ("review", "block") and (pred["flag"] or ml.borderline(pred)) and _ask_budget():
+            out["ask_review"] = {"why": ("This one is a close call for the detector. If you let a career-center reviewer "
+                                         "look at it, contact details are hidden first and nothing about you is kept. "
+                                         "Their answer also helps the detector learn.")}
     if posting.follow_up:
         out["case_code"] = open_case(out, posting.school)
         out["follow_up_after"] = follow_up_date()
@@ -204,6 +215,24 @@ def analyze_conversation(body: ThreadIn, request: Request) -> dict:
     return analyze_thread(body.thread, me=body.me or None)
 
 
+ASK_REVIEW_PER_DAY = int(os.environ.get("ASK_REVIEW_PER_DAY", "40"))
+_ask_day: dict = {"day": "", "n": 0}
+
+
+def _ask_budget() -> bool:
+    """At most ASK_REVIEW_PER_DAY offers a day per process (0 turns the offer off). Resets at midnight UTC."""
+    import datetime as _dt
+    if ASK_REVIEW_PER_DAY <= 0:
+        return False
+    today = _dt.datetime.now(_dt.timezone.utc).date().isoformat()
+    if _ask_day["day"] != today:
+        _ask_day.update({"day": today, "n": 0})
+    if _ask_day["n"] >= ASK_REVIEW_PER_DAY:
+        return False
+    _ask_day["n"] += 1
+    return True
+
+
 @app.post("/report")
 def report(body: ReportIn, request: Request) -> dict:
     """
@@ -212,12 +241,14 @@ def report(body: ReportIn, request: Request) -> dict:
     reaches the network or training until a reviewer confirms it.
     """
     enforce_rate_limit(request, report_limiter, "report")
-    record = make_report(body.text, body.sender, body.school, body.outcome)
+    record = make_report(body.text, body.sender, body.school, body.outcome, kind=body.kind)
     try:
         get_store().add_report(record)
         queued = True
     except Exception:                                   # noqa: BLE001 - the student still gets the FTC summary
         queued = False
+    if body.kind == "borderline":                       # a close call sent for a reviewer's eyes, not an accusation
+        return {"queued": queued, "kind": "borderline"}
     return {"queued": queued, "ftc_url": "https://reportfraud.ftc.gov",
             "ftc_summary": ftc_summary(body.text, body.sender, body.outcome),
             "next_step": next_step(record["outcome"])}

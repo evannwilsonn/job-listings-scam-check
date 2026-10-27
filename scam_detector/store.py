@@ -68,6 +68,13 @@ def _check_rule(kind: str, added_by: str) -> None:
         raise ValueError("say who is adding it")
 
 
+def _label_source(kind, label: str) -> str:
+    """Where a training label came from: report / report_real for a student's report, borderline / borderline_real
+    for a close call the detector asked about (so the two can be told apart in the trends and retrain notes)."""
+    base = "borderline" if kind == "borderline" else "report"
+    return base if label == "scam" else base + "_real"
+
+
 def _check_decision(decision: str, reviewer: str) -> None:
     if decision not in DECISIONS:
         raise ValueError(f"decision must be one of {DECISIONS}")
@@ -127,7 +134,7 @@ class JsonlStore:
         self._write(rows)
         label = "scam" if decision == "confirmed" else "legit" if real else None
         if label and r.get("text_masked"):
-            self.add_label({"label": label, "description": r["text_masked"], "source": "report" if label == "scam" else "report_real",
+            self.add_label({"label": label, "description": r["text_masked"], "source": _label_source(r.get("kind"), label),
                             "report_id": str(report_id), "school": r.get("school", ""), "reviewer": r["reviewer"]})
         return {**r, "id": str(report_id)}
 
@@ -313,8 +320,8 @@ class PostgresStore:
     def add_report(self, record: dict) -> str:
         with self._conn() as conn, conn.cursor() as cur:
             school = self._school(cur, record.get("school", ""))
-            cur.execute("INSERT INTO reports (school_id, outcome, text_masked) VALUES (%s, %s, %s) RETURNING id",
-                        (school, record.get("outcome") or None, record.get("text_masked")))
+            cur.execute("INSERT INTO reports (school_id, outcome, text_masked, kind) VALUES (%s, %s, %s, %s) RETURNING id",
+                        (school, record.get("outcome") or None, record.get("text_masked"), record.get("kind") or "report"))
             rid = cur.fetchone()[0]
             ind = record.get("indicators", {})
             for key, kind, hashed in _KINDS:
@@ -333,7 +340,7 @@ class PostgresStore:
 
     _REPORT_SQL = """
         SELECT r.id, r.received_at, coalesce(r.school_id, ''), coalesce(r.outcome, ''), coalesce(r.text_masked, ''),
-               r.status, r.reviewer, r.reviewed_at, r.note,
+               r.status, r.reviewer, r.reviewed_at, r.note, coalesce(r.kind, 'report'),
                coalesce(json_agg(json_build_object('kind', i.kind, 'value', i.value))
                         FILTER (WHERE i.id IS NOT NULL), '[]')
         FROM reports r
@@ -345,12 +352,12 @@ class PostgresStore:
 
     @staticmethod
     def _record(row) -> dict:
-        rid, received, school, outcome, text, status, reviewer, reviewed_at, note, inds = row
+        rid, received, school, outcome, text, status, reviewer, reviewed_at, note, kind, inds = row
         if isinstance(inds, str):
             inds = json.loads(inds)
-        by_kind = {key: sorted(i["value"] for i in inds if i["kind"] == kind) for key, kind, _ in _KINDS}
+        by_kind = {key: sorted(i["value"] for i in inds if i["kind"] == k) for key, k, _ in _KINDS}
         rec = {"id": str(rid), "received": received.replace(microsecond=0).isoformat(), "school": school,
-               "outcome": outcome, "text_masked": text, "indicators": by_kind, "status": status}
+               "outcome": outcome, "text_masked": text, "indicators": by_kind, "status": status, "kind": kind}
         if reviewer:
             rec.update({"reviewer": reviewer, "note": note or "",
                         "reviewed_at": reviewed_at.replace(microsecond=0).isoformat()})
@@ -366,12 +373,12 @@ class PostgresStore:
         reviewer, note = reviewer.strip()[:80], (note or "").strip()[:500]
         with self._conn() as conn, conn.cursor() as cur:
             cur.execute("UPDATE reports SET status = %s, reviewer = %s, reviewed_at = now(), note = %s "
-                        "WHERE id = %s AND status = 'reported' RETURNING school_id, text_masked",
+                        "WHERE id = %s AND status = 'reported' RETURNING school_id, text_masked, coalesce(kind, 'report')",
                         (decision, reviewer, note, int(report_id)))
             row = cur.fetchone()
             if row is None:
                 raise ValueError(f"report {report_id} doesn't exist or was already reviewed")
-            school, text = row
+            school, text, kind = row
             if decision == "confirmed":
                 cur.execute("UPDATE indicators SET status = 'confirmed', confirmed_by = %s, confirmed_at = now() "
                             "WHERE status = 'reported' AND id IN "
@@ -379,10 +386,12 @@ class PostgresStore:
                             (reviewer, int(report_id)))
                 if text:
                     cur.execute("INSERT INTO labels (label, description, source, report_id, school_id, reviewer) "
-                                "VALUES ('scam', %s, 'report', %s, %s, %s)", (text, int(report_id), school, reviewer))
+                                "VALUES ('scam', %s, %s, %s, %s, %s)",
+                                (text, _label_source(kind, "scam"), int(report_id), school, reviewer))
             elif real and text:                         # the reviewer says it's a real job: a "legit" training label
                 cur.execute("INSERT INTO labels (label, description, source, report_id, school_id, reviewer) "
-                            "VALUES ('legit', %s, 'report_real', %s, %s, %s)", (text, int(report_id), school, reviewer))
+                            "VALUES ('legit', %s, %s, %s, %s, %s)",
+                            (text, _label_source(kind, "legit"), int(report_id), school, reviewer))
             cur.execute(self._REPORT_SQL.replace("WHERE (", "WHERE r.id = %(id)s AND ("),
                         {"id": int(report_id), "status": "", "school": "", "since": ""})
             return self._record(cur.fetchone())
