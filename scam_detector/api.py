@@ -23,7 +23,9 @@ from pydantic import BaseModel, Field
 
 from . import ml
 from .conversation import analyze_thread
-from .employer import board_finding, check_job_board, verification_script
+from .attestations import attestation_findings
+from .employer import board_finding, check_job_board, screen_employer, verification_script
+from .network import lookup as network_lookup, network_findings
 from .followup import VERIFIED, follow_up_date, open_case, record_outcome
 from .identity import sender_findings
 from .intel import intel_findings
@@ -113,6 +115,19 @@ class VerifyIn(BaseModel):
     check_board: bool = Field(default=True, description="Look the job up on the company's public job board")
 
 
+class LookupIn(BaseModel):
+    value: str = Field(..., min_length=3, max_length=320, description="One phone number, email address, website or wallet")
+
+
+class ScreenIn(BaseModel):
+    company: str = Field(..., min_length=1, max_length=200)
+    contact_email: str = Field(default="", max_length=320)
+    website: str = Field(default="", max_length=500)
+    title: str = Field(default="", max_length=200)
+    description: str = Field(default="", max_length=20000)
+    run_network: bool = Field(default=True)
+
+
 class ReportIn(BaseModel):
     text: str = Field(..., min_length=1, max_length=20000, description="The message or posting being reported")
     sender: str = Field(default="", max_length=320)
@@ -142,6 +157,10 @@ def analyze(posting: PostingIn, request: Request) -> dict:
     intel = intel_findings(posting.description, [], posting.sender, posting.company, cache=_intel_cache,
                            network=posting.run_network)
     extra += [f for f in intel if f["rule_id"] not in have and f["rule_id"] != "new_domain"]
+    # The network (reviewer-confirmed scam contacts across schools) and what the named employer attested.
+    extra += network_findings(posting.description, posting.sender)
+    _, att = attestation_findings(posting.company, posting.sender, posting.description, out["findings"] + extra)
+    extra += att
     if extra:
         out["findings"].extend(extra)
         out["score"] = min(100, sum(f.get("weight", 0) for f in out["findings"]))
@@ -213,8 +232,26 @@ def verify_job(body: VerifyIn, request: Request) -> dict:
     enforce_rate_limit(request, analyze_limiter, "analyze")
     board = check_job_board(body.company, body.title, body.urls) if body.check_board and body.title else None
     findings = sender_findings(body.recruiter_email, body.recruiter_name, "", body.company)
+    att, att_f = attestation_findings(body.company, body.recruiter_email, "", findings, body.channel)
+    findings += att_f + network_findings(" ".join(body.urls), body.recruiter_email)
     note = board_finding(board or {}, body.company, body.title)
     if note:
         findings.append(note)
-    return {"board": board, "findings": findings,
+    return {"board": board, "findings": findings, "attested": bool(att),
+            "careers_url": (att or {}).get("careers_url"),
             "script": verification_script(body.company, body.title, body.recruiter_name, body.channel)}
+
+
+@app.post("/lookup")
+def lookup(body: LookupIn, request: Request) -> dict:
+    """Has this phone number, email, website or wallet been confirmed as a scam at any LureCheck school?"""
+    enforce_rate_limit(request, analyze_limiter, "analyze")
+    return network_lookup(body.value)
+
+
+@app.post("/screen-employer")
+def screen(body: ScreenIn, request: Request) -> dict:
+    """For a career-center reviewer approving an employer (e.g. on Handshake). Recommends; never decides."""
+    enforce_rate_limit(request, analyze_limiter, "analyze")
+    return screen_employer(body.company, body.contact_email, body.website, body.title, body.description,
+                           run_network=body.run_network)

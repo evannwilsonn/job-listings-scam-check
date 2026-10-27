@@ -178,3 +178,44 @@ def verification_script(company: str, title: str = "", recruiter: str = "", chan
         ],
         "after": "Whatever they say, you can tell us with your case code, which helps warn other students.",
     }
+
+
+SCREEN_VERDICTS = {
+    "hold": "Don't approve yet: something here matches a confirmed scam or breaks what the employer told us. Verify "
+            "the employer by phone through its own website first.",
+    "check": "Needs a closer look before approving. Check the points below with the employer directly.",
+    "ok": "No problems found. That isn't proof: approve the way you normally would.",
+}
+
+
+def screen_employer(company: str, contact_email: str = "", website: str = "", title: str = "", description: str = "",
+                    run_network: bool = True, fetch: Optional[Fetch] = None, store=None) -> dict:
+    """
+    One view of an employer for a career-center reviewer at approval time (plan item 17): who is writing, whether the
+    job is on the company's own board, what the company attested, whether any contact is already a confirmed scam,
+    and what the posting text triggers. It recommends; it never approves or rejects on its own.
+    """
+    from .attestations import attestation_findings
+    from .identity import sender_findings
+    from .intel import intel_findings
+    from .network import network_findings
+    from .scorer import score_posting
+
+    text = "\n".join(x for x in (description, website, contact_email) if x)
+    scored = score_posting(title, description or "", company, run_network=run_network) if (description or title) else None
+    findings = list(scored.findings) if scored else []
+    findings += sender_findings(contact_email, "", "", company, description)
+    have = {f["rule_id"] for f in findings}
+    findings += [f for f in intel_findings(text, [website] if website else [], contact_email, company, cache=None,
+                                           network=run_network) if f["rule_id"] not in have]
+    findings += network_findings(text, contact_email, store=store)
+    att, att_f = attestation_findings(company, contact_email, description, findings, store=store)
+    findings += att_f
+    board = check_job_board(company, title, [website] if website else [], fetch=fetch) if (run_network and title) else None
+    note = board_finding(board or {}, company, title)
+    if note:
+        findings.append(note)
+    verdict = ("hold" if any(f["severity"] == "critical" for f in findings)
+               else "check" if any(f["severity"] == "warning" for f in findings) else "ok")
+    return {"verdict": verdict, "advice": SCREEN_VERDICTS[verdict], "findings": findings, "board": board,
+            "attested": bool(att), "score": scored.score if scored else 0}
