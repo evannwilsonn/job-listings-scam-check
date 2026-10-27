@@ -53,7 +53,7 @@
     textarea,input{width:100%;box-sizing:border-box;font:inherit;padding:10px;border:1px solid #c9c9c9;border-radius:8px}
     textarea{min-height:140px} label{display:block;margin:10px 0 4px;font-weight:600}
     button{font:inherit;padding:9px 14px;border:0;border-radius:8px;background:#1f3a5f;color:#fff;cursor:pointer;margin:10px 8px 0 0}
-    button.alt{background:#e9edf2;color:#1b1b1b} .tier{margin-top:16px;padding:14px;border-radius:10px;border-left:6px solid}
+    button.alt{background:#e9edf2;color:#1b1b1b} .tier{margin-top:16px;padding:14px;border-radius:10px;border:1.5px solid}
     h3{margin:0 0 6px;font-size:17px} ul,ol{padding-left:20px} li{margin:6px 0} .why{color:#444}
     .small{font-size:13px;color:#555} pre{white-space:pre-wrap;background:#f6f6f6;padding:10px;border-radius:8px}`});
   const text = el("textarea", {placeholder: "Paste the job posting, email or text message"});
