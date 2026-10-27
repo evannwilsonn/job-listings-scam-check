@@ -113,6 +113,24 @@ production.
 - `tools/abuse_reports.py` drafts takedown emails per registrar (RDAP lookup) for confirmed scam domains. It never
   sends anything.
 
+- `POST /analyze-offer` checks an offer letter, pasted or as a PDF (`pdf_base64`; scanned PDFs are read with OCR).
+  On top of the normal checks it looks for what a real letter has: a company contact that isn't a free email
+  address, addresses and links that belong to the named company, and a start date, pay, signer, address and the
+  usual conditions (`scam_detector/offer.py`).
+- `POST /analyze-image` reads a screenshot of a text, chat or DM (`image_base64`, PNG/JPEG/WebP up to 5 MB), then
+  runs the normal checks and returns `text_read` so the student can correct it. The image is never stored. The
+  server needs Tesseract and, for scanned PDFs, poppler: `apt install tesseract-ocr poppler-utils`
+  (`scam_detector/ocr.py`). The embeddable checker takes either file.
+- `tools/alerts.py` writes a calendar file with yearly reminders for the career center (start of each semester,
+  internship season, tax season, summer, holidays), each with a draft student email and social post, and drafts an
+  alert when a scam pattern spikes in the follow-up cases. A school can shift the dates with `alert_dates` in
+  `scam_detector/schools.json`.
+- `extension/` is a Chrome extension (Manifest V3): paste a message or right-click selected text and choose "Check
+  this with LureCheck". It runs the same engine and public rules as the page, on the student's computer, and asks
+  for no access to websites or the network. Its `engine.js` and `lurecheck-data.js` are built by
+  `tools/build_web.py`. To try it: open `chrome://extensions`, turn on Developer mode, "Load unpacked", pick the
+  folder.
+
 Reports go to a reviewer before they go anywhere: `tools/review_queue.py` marks
 each one confirmed or dismissed, and `tools/export_evidence.py` packages the
 confirmed indicators (domains and wallets in the clear, contacts hashed) with a
@@ -137,7 +155,7 @@ implementation of the rule matcher, scorer and lead-gen heuristics, kept
 because it lets the page run with nothing leaving the browser. Two things stop
 the two from drifting apart:
 
-- `index.html` is a build output. `tools/build_web.py` assembles it from
+- `index.html` (and `extension/engine.js`, `extension/lurecheck-data.js`) are build outputs. `tools/build_web.py` assembles it from
   `web/page.html` (markup and UI), `web/engine.js` (the matcher, scorer and
   lead-gen port) and `scam_detector/rulepack/core.json` (the rules). Edit those
   and rebuild; never edit `index.html` by hand. `--check` fails when the built

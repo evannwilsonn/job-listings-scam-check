@@ -16,6 +16,8 @@ worker count and a cache when you have traffic that justifies it, not before.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import os
 from typing import List
 
@@ -26,6 +28,8 @@ from . import ml
 from .conversation import analyze_thread
 from .attestations import attestation_findings
 from .employer import board_finding, check_job_board, screen_employer, verification_script
+from .offer import is_offer, offer_findings, pdf_text
+from .ocr import OcrError, OcrUnavailable, image_text
 from .network import lookup as network_lookup, network_findings
 from .followup import VERIFIED, follow_up_date, open_case, record_outcome
 from .identity import sender_findings
@@ -52,18 +56,24 @@ if _ORIGINS:
                        allow_headers=["Content-Type"], allow_credentials=False, max_age=600)
 
 
+# Screenshots and offer-letter PDFs arrive base64-encoded: 5 MB of file is about 6.7 MB of JSON.
+UPLOAD_PATHS = frozenset({"/analyze-image", "/analyze-offer"})
+UPLOAD_MAX_BYTES = 7 * 1024 * 1024 + 512 * 1024
+
+
 @app.middleware("http")
 async def _limit_body(request: Request, call_next):
     """Refuse oversized bodies before they are read and parsed (the Field caps below only apply after parsing)."""
     from fastapi.responses import JSONResponse
+    limit = UPLOAD_MAX_BYTES if request.url.path in UPLOAD_PATHS else MAX_BODY_BYTES
     cl = request.headers.get("content-length", "")
-    if (cl and (not cl.isdigit() or int(cl) > MAX_BODY_BYTES)):
+    if (cl and (not cl.isdigit() or int(cl) > limit)):
         return JSONResponse({"detail": "Request body too large or malformed."}, status_code=413)
     if request.method == "POST":
         body = b""
         async for chunk in request.stream():
             body += chunk
-            if len(body) > MAX_BODY_BYTES:
+            if len(body) > limit:
                 return JSONResponse({"detail": "Request body too large."}, status_code=413)
         request._body = body                      # let the route parse what was already read
     response = await call_next(request)
@@ -98,6 +108,23 @@ class PostingIn(BaseModel):
     follow_up: bool = Field(default=False, description="Student opted in to a follow-up: returns a case code. Only "
                                                        "the verdict and rule ids are kept, never the text.")
     school: str = Field(default="", max_length=40)
+
+
+class ImageIn(BaseModel):
+    image_base64: str = Field(..., min_length=16, max_length=7_200_000, description="A PNG, JPEG or WebP screenshot")
+    sender: str = Field(default="", max_length=320)
+    company: str = Field(default="", max_length=300)
+    school: str = Field(default="", max_length=40)
+    run_network: bool = Field(default=True)
+
+
+class OfferIn(BaseModel):
+    text: str = Field(default="", max_length=20000, description="The offer letter's text")
+    pdf_base64: str = Field(default="", max_length=7_200_000, description="Or the letter as a PDF")
+    sender: str = Field(default="", max_length=320)
+    company: str = Field(default="", max_length=300)
+    school: str = Field(default="", max_length=40)
+    run_network: bool = Field(default=True)
 
 
 class ThreadIn(BaseModel):
@@ -186,6 +213,61 @@ def analyze(posting: PostingIn, request: Request) -> dict:
     if posting.follow_up:
         out["case_code"] = open_case(out, posting.school)
         out["follow_up_after"] = follow_up_date()
+    return out
+
+
+def _decode(b64: str) -> bytes:
+    if "," in b64[:100] and b64.startswith("data:"):
+        b64 = b64.split(",", 1)[1]                    # a data: URL from a browser file reader
+    try:
+        return base64.b64decode(b64, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(status_code=422, detail="The file wasn't valid base64.")
+
+
+@app.post("/analyze-image")
+def analyze_image(body: ImageIn, request: Request) -> dict:
+    """A screenshot of a text, chat or DM: read the text (never stored), then the normal checks.
+
+    The response includes text_read so the student can see what was read and correct it."""
+    enforce_rate_limit(request, analyze_limiter, "analyze")
+    try:
+        text = image_text(_decode(body.image_base64))
+    except OcrUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except OcrError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    out = analyze(PostingIn(description=text, sender=body.sender, company=body.company, school=body.school,
+                            run_network=body.run_network), request)
+    out["text_read"] = text
+    return out
+
+
+@app.post("/analyze-offer")
+def analyze_offer(body: OfferIn, request: Request) -> dict:
+    """An offer letter, pasted or as a PDF: the normal checks plus what a real offer letter should contain."""
+    enforce_rate_limit(request, analyze_limiter, "analyze")
+    text = body.text
+    if body.pdf_base64:
+        try:
+            text = pdf_text(_decode(body.pdf_base64))
+        except OcrUnavailable as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+        except (OcrError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+    if not text.strip():
+        raise HTTPException(status_code=422, detail="Paste the letter's text or attach the PDF.")
+    out = analyze(PostingIn(description=text[:20000], sender=body.sender, company=body.company, school=body.school,
+                            run_network=body.run_network), request)
+    have = {f["rule_id"] for f in out["findings"]}
+    extra = [f for f in offer_findings(text, body.company) if f["rule_id"] not in have]
+    if extra:
+        out["findings"].extend(extra)
+        out["score"] = min(100, sum(f.get("weight", 0) for f in out["findings"]))
+        out["band"], out["verdict"] = _band(out["score"], any(f.get("severity") == "critical" for f in out["findings"]))
+    out["is_offer_letter"] = is_offer(text)
+    if body.pdf_base64:
+        out["text_read"] = text[:20000]
     return out
 
 
