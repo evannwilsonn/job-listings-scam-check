@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "LureCheck: is this job real?",
+  "short_name": "LureCheck",
+  "version": "0.1.0",
+  "description": "Check a job posting, recruiter email or message for known job-scam patterns. Runs on your computer; nothing you check is sent anywhere.",
+  "action": {"default_title": "Check a job message with LureCheck", "default_popup": "popup.html"},
+  "background": {"service_worker": "background.js"},
+  "permissions": ["contextMenus", "storage"],
+  "content_security_policy": {"extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'"}
+}

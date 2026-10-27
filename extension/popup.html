@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>LureCheck</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<main>
+  <h1>Is this job real?</h1>
+  <label for="text">Paste the posting, email or message</label>
+  <textarea id="text" rows="8"></textarea>
+  <label for="sender">Who sent it (optional)</label>
+  <input id="sender" placeholder="name@example.com">
+  <button id="go">Check it</button>
+  <section id="result" role="status" aria-live="polite"></section>
+  <p class="small">Runs on your computer. Nothing you check leaves this browser. <span id="ver"></span></p>
+</main>
+<script src="lurecheck-data.js"></script>
+<script src="engine.js"></script>
+<script src="popup.js"></script>
+</body>
+</html>
