@@ -283,14 +283,30 @@ def posting_key(title: str, description: str, company: str = "", url: str = "") 
 
 # ---------- the one thing the rest of the site calls ----------
 
+BORDERLINE = 0.15     # a score within this of the threshold is a close call worth a reviewer's eyes (api.py ask_review)
+
+
+def borderline(pred: dict) -> bool:
+    """A close call: the conformal set can't settle it, or the score sits within BORDERLINE of the threshold. These are
+    the listings a reviewer's label teaches the most from, so the site offers to send them (with the student's consent)."""
+    return bool(pred.get("uncertain")) or abs(float(pred["probability"]) - float(pred["threshold"])) < BORDERLINE
+
+
 def second_look(title: str, description: str, company: str = "", url: str = "",
                 findings: list[dict] | None = None, score: int = 0, rule_titles: dict | None = None,
                 model: Model | None = None) -> dict | None:
     """A finding to add when the model is confident and the rules weren't, else None.
     The caller decides what it escalates (never more than 'send to a person' / 'be careful')."""
+    return assess(title, description, company, url, findings, score, rule_titles, model)["finding"]
+
+
+def assess(title: str, description: str, company: str = "", url: str = "",
+           findings: list[dict] | None = None, score: int = 0, rule_titles: dict | None = None,
+           model: Model | None = None) -> dict:
+    """{"pred": the model's prediction or None, "finding": the second-look finding or None}."""
     m = model or load()
     if m is None:
-        return None
+        return {"pred": None, "finding": None}
     pred = m.predict(title, description, company, url, findings, score)
     if model is None and (ROUTE is not None or MONITOR is not None):
         # During a staged release the site serves the candidate for a stable slice of listings and scores the rest with
@@ -310,7 +326,7 @@ def second_look(title: str, description: str, company: str = "", url: str = "",
         except Exception:                                   # noqa: BLE001
             pass
     if not pred["flag"]:
-        return None
+        return {"pred": pred, "finding": None}
     titles = rule_titles or {f["rule_id"]: f["title"] for f in (findings or [])}
     reasons = []
     for b in pred["because"]:
@@ -324,11 +340,11 @@ def second_look(title: str, description: str, company: str = "", url: str = "",
             reasons.append(b["name"])
     n = m.trained_on.get("rows")
     trained = f"a model trained on {n} labeled listings" if n else "the trained model"
-    return {
+    return {"pred": pred, "finding": {
         "rule_id": "model_second_look", "severity": "warning", "weight": 0,
         "title": "Worth a second look",
         "why": (f"No single rule is sure, but {trained} rates this {round(pred['probability'] * 100)}% likely to be a scam. "
                 "It can send something to a person or suggest caution; it never rejects anything on its own."),
         "matched": reasons[:4],
         "model": {"probability": pred["probability"], "version": pred["version"]},
-    }
+    }}

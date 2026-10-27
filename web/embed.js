@@ -126,6 +126,21 @@
         rep.onclick = () => report(extra);
         tier.append(replied, rep);
       }
+      if (r.ask_review && !(r.band === "review" || r.band === "block")) {
+        // A close call for the detector. Sent only if the student taps it; masked like any report (kind=borderline).
+        const ask = el("button", {textContent: "Let a reviewer check it", className: "alt"});
+        ask.onclick = async () => {
+          ask.disabled = true;
+          extra.replaceChildren(el("p", {className: "small", textContent: "Sending..."}));
+          try {
+            const q = await post("/report", {text: text.value.slice(0, 20000), sender: sender.value, school: SCHOOL, kind: "borderline"});
+            extra.replaceChildren(el("p", {className: "small", textContent: q.queued
+              ? "Thanks. A career-center reviewer will look at it. Contact details were hidden first and nothing about you is kept."
+              : "Couldn't send it right now. Until a person has looked: don't pay, deposit or share anything."}));
+          } catch (e) { extra.replaceChildren(el("p", {className: "small", textContent: "Couldn't send it right now."})); }
+        };
+        tier.append(el("p", {className: "small", textContent: r.ask_review.why}), ask);
+      }
       out.replaceChildren(tier, extra);
     } catch (e) {
       out.replaceChildren(el("p", {textContent: "The checker isn't reachable right now. Until it is: never pay to get a job, never deposit a check from an employer you haven't verified, and look the company up yourself."}));

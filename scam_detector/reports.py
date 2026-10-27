@@ -75,12 +75,16 @@ def mask(text: str) -> str:
     return _PHONE.sub("[phone]", text)
 
 
+KINDS = ("report", "borderline")    # a student's report, or a close call the detector asked a reviewer to settle
+
+
 def make_report(text: str, sender: str = "", school: str = "", outcome: str = "",
-                now: Optional[dt.datetime] = None) -> dict:
+                now: Optional[dt.datetime] = None, kind: str = "report") -> dict:
     text = (text or "")[:MAX_TEXT]
     now = now or dt.datetime.now(dt.timezone.utc)
     return {
         "received": now.replace(microsecond=0).isoformat(),
+        "kind": kind if kind in KINDS else "report",
         "school": re.sub(r"[^a-z0-9_-]", "", (school or "").lower())[:40],
         "outcome": outcome if outcome in OUTCOMES else "",
         "text_masked": mask(text),
