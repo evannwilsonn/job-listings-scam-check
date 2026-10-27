@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from .recovery import HAPPENED
+from .store import get_store
 
 DATA = Path(os.environ.get("LURECHECK_DATA", Path(__file__).resolve().parent / "data"))
 CASES = DATA / "cases.jsonl"
@@ -52,11 +53,15 @@ def open_case(result: dict, school: str = "", path=None, now: Optional[dt.date] 
     code = secrets.token_urlsafe(9)
     today = now or dt.datetime.now(dt.timezone.utc).date()
     findings = result.get("findings", [])
-    _append(path or CASES, {
+    rec = {
         "case": _h(code), "date": today.isoformat(), "school": "".join(c for c in school.lower() if c.isalnum())[:40],
         "band": result.get("band", ""), "score": result.get("score", 0),
         "rules": sorted({f["rule_id"] for f in findings if f.get("rule_id") != "model_second_look"}),
-        "model_flag": any(f.get("rule_id") == "model_second_look" for f in findings)})
+        "model_flag": any(f.get("rule_id") == "model_second_look" for f in findings)}
+    if path:
+        _append(path, rec)                              # explicit file: tests and offline use
+    else:
+        get_store().add_case(rec)
     return code
 
 
@@ -70,9 +75,12 @@ def record_outcome(code: str, happened: List[str], verified: str = "", path=None
     happened = [h for h in dict.fromkeys(happened or []) if h in HAPPENED or h == "nothing"]
     if not code or not code.strip() or verified not in VERIFIED or not happened:
         return False
-    _append(path or OUTCOMES, {"case": _h(code), "date": (now or dt.datetime.now(dt.timezone.utc).date()).isoformat(),
-                               "happened": happened, "verified": verified})
-    return True
+    rec = {"case": _h(code), "date": (now or dt.datetime.now(dt.timezone.utc).date()).isoformat(),
+           "happened": happened, "verified": verified}
+    if path:
+        _append(path, rec)
+        return True
+    return get_store().add_outcome(rec)                 # False when the case code is unknown (Postgres)
 
 
 def load(path) -> list:

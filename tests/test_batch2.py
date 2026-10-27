@@ -97,11 +97,10 @@ def test_analyze_thread_endpoint():
     assert out["turns"] and out["furthest_stage"]
 
 
-def test_report_endpoint_queues_masked_record(tmp_path, monkeypatch):
+def test_report_endpoint_queues_masked_record(_isolated_store):
     from fastapi.testclient import TestClient
     from scam_detector import api
-    q = tmp_path / "queue.jsonl"
-    monkeypatch.setattr(api, "REPORT_QUEUE", str(q))
+    q = _isolated_store.reports_path
     c = TestClient(api.app)
     out = c.post("/report", json={"text": "Email me at boss.hr@gmail.com and deposit the check we send you today.",
                                   "school": "fsu", "outcome": "deposited_check"}).json()

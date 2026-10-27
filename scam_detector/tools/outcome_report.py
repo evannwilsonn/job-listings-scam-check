@@ -67,16 +67,21 @@ def text(s: dict) -> str:
 
 
 def main(argv=None) -> int:
+    from ..store import get_store
     ap = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
-    ap.add_argument("--cases", default=str(CASES))
-    ap.add_argument("--outcomes", default=str(OUTCOMES))
+    ap.add_argument("--cases", default="", help="a cases JSONL file; default is the database when DATABASE_URL is set")
+    ap.add_argument("--outcomes", default="")
     ap.add_argument("--school", default="")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
-    s = summarize(load(a.cases), load(a.outcomes), a.school)
+    if a.cases or a.outcomes:
+        cases, outs = load(a.cases or CASES), load(a.outcomes or OUTCOMES)
+    else:
+        store = get_store()
+        cases, outs = store.cases(), store.outcomes()
+    s = summarize(cases, outs, a.school)
     print(json.dumps(s, indent=1) if a.json else text(s))
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

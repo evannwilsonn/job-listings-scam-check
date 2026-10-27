@@ -149,7 +149,12 @@ $$;
 
 -- The application's role: read and write rows, no schema changes, no deletes outside the purge.
 -- Give a login role this membership in the Neon console: GRANT lurecheck_app TO <login role>;
-CREATE ROLE lurecheck_app NOLOGIN;
+-- Roles are per server, not per database, so this tolerates a second database (test, CI) on the same server.
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'lurecheck_app') THEN
+        CREATE ROLE lurecheck_app NOLOGIN;
+    END IF;
+END $$;
 GRANT USAGE ON SCHEMA public TO lurecheck_app;
 GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO lurecheck_app;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO lurecheck_app;
