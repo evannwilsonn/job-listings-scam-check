@@ -5,3 +5,4 @@
 -- from these carry source borderline / borderline_real instead of report / report_real.
 ALTER TABLE reports ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'report'
     CHECK (kind IN ('report', 'borderline'));
+INSERT INTO schema_migrations (version) VALUES ('005_report_kind');
