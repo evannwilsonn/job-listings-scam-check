@@ -47,6 +47,9 @@ report_limiter = RateLimiter(max_attempts=10, window_seconds=600)
 app = FastAPI(title="Job Scam Detector", version="1.0")
 learning.configure_serving()      # the active retrained model (or the shipped one), staged releases, and drift recording
 
+from .review_web import router as _review_router    # noqa: E402 - the reviewers' pages (/review), server-rendered
+app.include_router(_review_router)
+
 # The embeddable checker (web/embed.js) runs on a career center's own site and calls this API from there. Browsers
 # only allow that for origins listed here: ALLOWED_ORIGINS="https://career.fsu.edu,https://lurecheck.com". Empty
 # (the default) allows no other site. No cookies or credentials are ever accepted cross-origin.
