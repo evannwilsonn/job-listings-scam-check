@@ -356,7 +356,7 @@ grid-template-columns:auto minmax(0,1fr) auto;gap:2px 12px;align-items:baseline}
 .card.done>details>summary::-webkit-details-marker{display:none}
 .d-title{font-weight:700;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .d-v{font:600 12px var(--mono);letter-spacing:.04em;text-transform:uppercase}.v-scam{color:var(--r)}.v-real{color:#1E7350}
-.v-aggregator{color:var(--v)}.v-not{color:var(--dim)}
+.v-reposting{color:var(--v)}.v-not{color:var(--dim)}
 .d-meta{grid-column:2/4;font-size:14px;color:var(--dim)}.d-meta em{font-style:normal;color:#1E7350;font-weight:600}
 .card.done details[open]>summary{border-bottom:1px solid var(--line)}.d-body{padding:14px 18px 16px}
 .d-body .c-head{justify-content:flex-start}.d-body .c-head>div:first-child{display:none}
@@ -383,6 +383,15 @@ article.card:focus{outline:none}article.card.kb-focus:focus{outline:2px solid va
 .doc th{font:600 12px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
 .doc em{color:var(--dim);font-style:normal;font-size:14px}
 .mnav{display:none}
+.me b{color:#fff;font-weight:600}.me .who{display:flex;flex-direction:column;line-height:1.3;text-align:right}
+.me .who small{font-size:12px;color:#9FAAC0}.mnav-body .me .who{text-align:left}
+table.team td{vertical-align:middle}.t-sub{display:block;color:var(--dim);font-size:14px}
+table.team tr.off td{color:var(--dim)}.acts{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}.acts form{margin:0}
+.acts .btn{padding:6px 10px;white-space:nowrap}.acts{flex-wrap:nowrap}table.team th{white-space:nowrap}
+.m-l{display:none}.me .pw-link{color:#C9D2E3;text-decoration:none;font-weight:600}.me .pw-link.on,.me .pw-link:hover{color:#fff}
+.team-add input[name=name],.team-add input[name=email]{flex:1 1 180px}.team-add input[name=title]{flex:1 1 220px}
+.secret{border-color:#E7D3A3;background:#FFFBF1}.pw code{font:600 18px var(--mono);background:#fff;border:1px solid var(--line2);
+border-radius:8px;padding:6px 12px;user-select:all;display:inline-block}
 @media (max-width:720px){
 .hd{flex-wrap:nowrap;min-height:56px}nav.main,.hd>.me{display:none}
 .mnav{display:block;margin-left:auto;position:relative}
@@ -397,7 +406,10 @@ background:var(--navy2);border:1px solid #ffffff22;border-radius:12px;padding:8p
 .doc{padding:18px}.kb,#kb-help{display:none}
 .grid{grid-template-columns:1fr 1fr;gap:10px}.stat{padding:12px 14px}.stat b{font-size:24px}
 .stat .kick{display:block;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.t-long{display:none}.t-short{display:inline}.tabs a{padding:10px 8px 9px;gap:5px}.tabs a b{font-size:16px}
+.t-long{display:none}.t-short{display:inline}
+table.team,table.team tbody,table.team tr,table.team td{display:block}table.team tr:first-child{display:none}
+table.team tr{padding:10px 0;border-bottom:1px solid var(--line)}table.team td{border:0;padding:2px 0}
+.acts{justify-content:flex-start;margin-top:6px;flex-wrap:wrap}.m-l{display:inline;color:var(--dim)}.tabs a{padding:10px 8px 9px;gap:5px}.tabs a b{font-size:16px}
 .card.done>details>summary{grid-template-columns:auto minmax(0,1fr);padding:12px 14px}.d-v{grid-column:2;grid-row:2}
 .d-meta{grid-column:2}.d-body{padding:12px 14px 14px}}
 @media (hover:hover) and (pointer:fine){.btn.primary:hover{background:var(--navy2)}.btn.ghost:hover{background:#F7F7F4;border-color:#C4C0B4}
@@ -408,13 +420,22 @@ MARK = ('<svg class="mark" viewBox="0 0 40 40" aria-hidden="true"><path d="M20 3
         'L17.6 17.6 Z" fill="#E2BE6A"/></svg>')
 
 
+def _is_admin(who) -> bool:
+    """Admins manage colleagues at their own school; an account with no school is the LureCheck operator."""
+    return bool(who) and (who.get("role") == "admin" or not who.get("school"))
+
+
 def _page(title: str, body: str, who=None, token: str = "", status: int = 200, on: str = "") -> HTMLResponse:
     nav = ""
     if who:
         links = [("home", "/review", "Home"), ("queue", "/review/queue", "Reports"), ("trends", "/review/trends", "Trends"),
-                 ("settings", "/review/settings", "School settings"), ("password", "/review/password", "Password")]
+                 ("settings", "/review/settings", "School settings")]
+        if _is_admin(who):
+            links.append(("team", "/review/team", "Team"))
         items = "".join(f'<a href="{h}"{" class=on" if k == on else ""}>{t}</a>' for k, h, t in links)
-        me = (f'<div class="me"><span>{e(who["name"])} · {e(_school_label(who["school"]))}</span>'
+        role = who.get("title") or ("LureCheck operator" if not who["school"] else "Career center staff")
+        me = (f'<div class="me"><span class="who"><b>{e(who["name"])}</b><small>{e(role)}</small></span>'
+              f'<a class="pw-link{" on" if on == "password" else ""}" href="/review/password">Password</a>'
               f'<form method="post" action="/review/logout"><input type="hidden" name="csrf" value="{acct.csrf_for(token)}">'
               f'<button>Log out</button></form></div>')
         current = next((t for k, _, t in links if k == on), "Menu")
@@ -442,7 +463,7 @@ def _expired(who, token) -> HTMLResponse:
 def _login_page(error: str = "", status: int = 200) -> HTMLResponse:
     err = f'<div class="err">{e(error)}</div>' if error else ""
     return _page("Log in", f'<div class="login card"><p class="kick">Career-center staff</p><h1>Log in</h1>'
-                           f'<p class="sub">Ask the LureCheck operator for an account.</p>{err}<form method="post" action="/review/login">'
+                           f'<p class="sub">No account yet? Ask your career center\'s LureCheck admin.</p>{err}<form method="post" action="/review/login">'
                            f'<label for="em">Email</label><input id="em" name="email" type="email" autocomplete="username" required>'
                            f'<label for="pw">Password</label><input id="pw" name="password" type="password" '
                            f'autocomplete="current-password" required><button class="btn dark">Log in</button></form></div>',
@@ -565,7 +586,7 @@ def _verdict(r: dict) -> str:
     if r.get("status") == "confirmed":
         return "Scam"
     if note.startswith(TAG_AGGREGATOR):
-        return "Aggregator"
+        return "Reposting site"
     if note.startswith(TAG_UNCLEAR):
         return "Not enough to tell"
     return "Real job" if r.get("status") == "dismissed" else r.get("status", "")
@@ -583,7 +604,7 @@ def _buttons(a: dict, neutral: bool = False) -> str:
     scammy = a["band"] in ("block", "review") or a["network"]
     lean = (None if neutral else "scam" if scammy else
             "aggregator" if (a.get("lead_gen") or {}).get("flag") else "real")
-    labels = [("scam", "It's a scam"), ("real", "It's a real job"), ("aggregator", "Aggregator"), ("unclear", "Not enough to tell")]
+    labels = [("scam", "It's a scam"), ("real", "It's a real job"), ("aggregator", "Reposting site"), ("unclear", "Not enough to tell")]
     return "".join(f'<button class="btn {"primary" if k == lean else "ghost"}" name="action" value="{k}">'
                    f'<i style="background:{DOT[k]}"></i>{t}</button>' for k, t in labels)
 
@@ -615,13 +636,14 @@ def _card(r: dict, a: dict, who: dict, token: str, tab: str = "waiting", impact:
     if r.get("kind") == "borderline" and not a.get("disagree"):
         tags.append('<span class="tag close">Close call: the detector asked for a person</span>')
     if lg.get("flag"):
-        tags.append('<span class="tag agg">Looks like an aggregator or lead-gen page</span>')
+        tags.append('<span class="tag agg">Looks like a reposting site, not the employer</span>')
     tags = "".join(t for t in tags if t)
     body = head + (f'<div class="tags">{tags}</div>' if tags else "")
     if a.get("disagree") and a.get("model"):
-        close = "Close call, and the" if r.get("kind") == "borderline" else "The"
-        body += (f'<p class="split"><b>{close} rules and the trained model disagree.</b> Rules: {a["score"]} of 100. '
-                 f'Model: {_pct(a["model"]["probability"])} likely a scam. Read this one closely.</p>')
+        lead = "Close call, and LureCheck's" if r.get("kind") == "borderline" else "LureCheck's"
+        body += (f'<p class="split"><b>{e(lead)} two checks disagree.</b> Red flags found: {a["score"]} of 100. '
+                 f'Wording compared with known scams: {_pct(a["model"]["probability"])} likely a scam. '
+                 f'Read this one closely.</p>')
     body += f'<div class="text">{_highlight(text, a["flags"]) if text else "(the text was removed after 30 days)"}</div>'
     items, whys_all = [], []
     for group in _flag_groups(text, a["flags"]):
@@ -653,7 +675,7 @@ def _card(r: dict, a: dict, who: dict, token: str, tab: str = "waiting", impact:
         body += ('<details class="whys"><summary>Why these were flagged</summary>'
                  + "".join(f'<p><b>{e(t)}.</b> {e(w)}</p>' for t, w in whys_all) + '</details>')
     if agg:
-        body += (f'<p class="agg-h">Aggregator signs <span>· not part of the risk score</span></p>'
+        body += (f'<p class="agg-h">Reposting-site signs <span>· not part of the risk score</span></p>'
                  f'<ul class="flags agg">{"".join(agg)}</ul>')
     ind = r.get("indicators") or {}
     bits = []
@@ -664,7 +686,7 @@ def _card(r: dict, a: dict, who: dict, token: str, tab: str = "waiting", impact:
         if n:
             bits.append(f"{n} {word}{'es' if word.endswith('ss') and n > 1 else 's' if n > 1 else ''} hidden")
     if a.get("model") and not a.get("disagree"):
-        bits.append(f"Trained model: {_pct(a['model']['probability'])} likely a scam")
+        bits.append(f"Wording compared with known scams: {_pct(a['model']['probability'])} likely a scam")
     if bits:
         body += f'<p class="meta">{" · ".join(bits)}</p>'
     if decided:
@@ -689,11 +711,11 @@ def _card(r: dict, a: dict, who: dict, token: str, tab: str = "waiting", impact:
     return f'<article class="card" id="r-{e(r["id"])}">{body}</article>'
 
 
-FLASH = {"scam": "Confirmed as a scam. Copies of this script are now flagged on every check, its links and contacts "
-                 "are shared with other LureCheck schools, and it's in the next retrain.",
-         "real": "Marked as a real job. It's a 'real' example for the next retrain, so look-alikes are less likely to be flagged.",
-         "aggregator": "Marked as an aggregator. It's kept out of training in both directions.",
-         "unclear": "Closed as not enough to tell. Nothing is learned from it."}
+FLASH = {"scam": "Confirmed as a scam. Any student who checks a copy of this message is now warned, its links and contacts "
+                 "are shared with other LureCheck schools, and LureCheck learns from it.",
+         "real": "Marked as a real job. LureCheck learns from it, so similar real postings are less likely to be flagged.",
+         "aggregator": "Marked as a reposting site. LureCheck doesn't learn from it either way.",
+         "unclear": "Closed as not enough to tell. LureCheck doesn't learn from it."}
 
 
 def _stub(n: str, done: str, token: str, tab: str) -> str:
@@ -740,20 +762,20 @@ def queue(request: Request, tab: str = "waiting", done: str = "", n: str = "", a
         else:
             msg = "Queue clear. New reports show up here as students send them."
         cards.append(f'<div class="card empty">{e(msg)}</div>')
-    sub = {"waiting": "Students who already acted come first, then the riskiest. Your answer becomes a training label, "
-                      "so 'Not enough to tell' is better than a guess.",
+    sub = {"waiting": "Students who already acted come first, then the riskiest. LureCheck learns from your answers, "
+                      "so if you're unsure, choose 'Not enough to tell'.",
            "acted": "These students already did something. Decide these first; the student was shown what to do next.",
            "close": "The detector couldn't settle these and the student agreed to let a person look. "
                     "These teach the detector the most.",
            "decided": f"The last {QUEUE_MAX} decisions. Open one to see the report. You can undo your own for "
-                      f"{UNDO_SECONDS // 60} minutes; after that, ask the operator."}[tab]
+                      f"{UNDO_SECONDS // 60} minutes; after that, contact LureCheck support."}[tab]
     keys = ('<p class="meta kb" id="kb-hint" hidden>Keyboard: <kbd>J</kbd> <kbd>K</kbd> move · <kbd>S</kbd> scam · '
-            '<kbd>R</kbd> real job · <kbd>A</kbd> aggregator · <kbd>N</kbd> not enough to tell · <kbd>U</kbd> undo · '
+            '<kbd>R</kbd> real job · <kbd>A</kbd> reposting site · <kbd>N</kbd> not enough to tell · <kbd>U</kbd> undo · '
             '<kbd>?</kbd> all keys</p>'
             '<div class="card kb-help" id="kb-help" hidden><h2>Keyboard</h2><ul class="list">'
             '<li><span>Next / previous report</span><b><kbd>J</kbd> <kbd>K</kbd></b></li>'
             '<li><span>It\'s a scam</span><b><kbd>S</kbd></b></li><li><span>It\'s a real job</span><b><kbd>R</kbd></b></li>'
-            '<li><span>Aggregator</span><b><kbd>A</kbd></b></li><li><span>Not enough to tell</span><b><kbd>N</kbd></b></li>'
+            '<li><span>Reposting site</span><b><kbd>A</kbd></b></li><li><span>Not enough to tell</span><b><kbd>N</kbd></b></li>'
             '<li><span>Write a note</span><b><kbd>E</kbd></b></li><li><span>Undo the last decision</span><b><kbd>U</kbd></b></li>'
             '<li><span>Show or hide this</span><b><kbd>?</kbd></b></li></ul></div>')
     return _page("Reports", f'<p class="kick">{e(_school_label(who["school"]))}</p><h1>Reports from students</h1>'
@@ -799,8 +821,8 @@ def home(request: Request):
     reals = f'{tot["real"]} real job{"" if tot["real"] == 1 else "s"} labeled this month, which keeps false alarms down.'
     keep = (f'<div class="card"><h2>Is the detector keeping up?</h2><p class="sub" style="margin-bottom:6px">Of this month\'s '
             f'confirmed scams, today\'s detector flags <b>{tot["caught"]} of {tot["confirmed"]}</b> on its own.</p>'
-            + (f'<div class="bar"><i style="width:{pct}%"></i></div><p class="meta">{pct}% · the rest are what the next '
-               f'rules and retrain learn from. {reals}</p>' if tot["confirmed"] >= MIN_RATE else
+            + (f'<div class="bar"><i style="width:{pct}%"></i></div><p class="meta">{pct}% · LureCheck learns from the ones it '
+               f'missed. {reals}</p>' if tot["confirmed"] >= MIN_RATE else
                f'<p class="meta">Too early for a rate. {reals}</p>')
             + '</div>'
             if tot["confirmed"] else
@@ -890,7 +912,7 @@ async def undo(request: Request):
         rec = st.undo_decision(r["id"], who["name"], UNDO_SECONDS)
     except ValueError:
         return _page("Too late to undo", f'<div class="err">That decision can only be undone by the person who made it, '
-                                         f'within {UNDO_SECONDS // 60} minutes. Ask the operator.</div>', who, token, 409)
+                                         f'within {UNDO_SECONDS // 60} minutes. Contact LureCheck support.</div>', who, token, 409)
     if was == "confirmed" and rec.get("text_masked"):
         try:
             from . import learning
@@ -1008,6 +1030,117 @@ def _password_page(who, token, msg: str = "", ok: bool = False, status: int = 20
                              f'<label for="n">New password</label><input id="n" name="new" type="password" autocomplete="new-password" required>'
                              f'<label for="a">New password again</label><input id="a" name="again" type="password" autocomplete="new-password" required>'
                              f'<button class="btn dark">Change it</button></form></div>', who, token, status, on="password")
+
+
+# ---------------------------------------------------------------- team (admins)
+
+def _team_page(who, token, msg: str = "", ok: bool = True, secret=None, status: int = 200) -> HTMLResponse:
+    csrf = acct.csrf_for(token)
+    box = f'<div class="{"flash" if ok else "err"}">{e(msg)}</div>' if msg else ""
+    if secret:
+        email, pw, added = secret
+        box += (f'<div class="card secret"><h2>{"Account added" if added else "Password reset"}</h2>'
+                f'<p class="sub" style="margin:0 0 8px">Temporary password for <b>{e(email)}</b>:</p>'
+                f'<p class="pw"><code>{e(pw)}</code></p><p class="meta" style="margin:0">Shown only this once. Give it to them '
+                f'in person or by phone, not in the same email as the sign-in link. They choose their own password after '
+                f'signing in.</p></div>')
+    rows = [r for r in _store().reviewers() if not who["school"] or r.get("school") == who["school"]]
+    rows.sort(key=lambda r: (not r.get("active"), r.get("role") != "admin", r["name"].lower()))
+
+    def act(r: dict, op: str, label: str, cls: str = "ghost") -> str:
+        return (f'<form method="post" action="/review/team"><input type="hidden" name="csrf" value="{csrf}">'
+                f'<input type="hidden" name="op" value="{op}"><input type="hidden" name="email" value="{e(r["email"])}">'
+                f'<button class="btn {cls}">{label}</button></form>')
+    trs = []
+    for r in rows:
+        last = dt.datetime.fromtimestamp(r["last_login"]).strftime("%b %d, %Y") if r.get("last_login") else "Never"
+        school = f' · {e(_school_label(r.get("school", "")))}' if not who["school"] else ""
+        if r["id"] == who["id"]:
+            acts = '<span class="meta">You</span>'
+        else:
+            acts = (act(r, "reset", "Reset password") +
+                    act(r, "role", "Make reviewer" if r.get("role") == "admin" else "Make admin") +
+                    (act(r, "disable", "Turn off") if r.get("active") else act(r, "enable", "Turn on", "dark")))
+        trs.append(f'<tr class="{"" if r.get("active") else "off"}"><td><b>{e(r["name"])}</b>'
+                   f'{"" if r.get("active") else " <span class=\"tag\">Off</span>"}'
+                   f'<span class="t-sub">{e(r.get("title") or "")}{school}</span></td><td>{e(r["email"])}</td>'
+                   f'<td><span class="m-l">Role: </span>{"Admin" if r.get("role") == "admin" else "Reviewer"}</td>'
+                   f'<td><span class="m-l">Last signed in </span>{e(last)}</td><td><div class="acts">{acts}</div></td></tr>')
+    picker = ""
+    if not who["school"]:
+        picker = ('<select name="school" aria-label="School" required><option value="">School</option>' +
+                  "".join(f'<option value="{e(k)}">{e(_school_label(k))}</option>' for k in sorted(guardrails._config())) +
+                  "</select>")
+    add = (f'<form class="inline team-add" method="post" action="/review/team"><input type="hidden" name="csrf" value="{csrf}">'
+           f'<input type="hidden" name="op" value="add"><input name="name" placeholder="Full name" aria-label="Full name" '
+           f'maxlength="80" required><input name="email" type="email" placeholder="Work email" aria-label="Work email" required>'
+           f'<input name="title" placeholder="Job title (optional)" aria-label="Job title" maxlength="80">{picker}'
+           f'<select name="role" aria-label="Role"><option value="reviewer">Reviewer</option><option value="admin">Admin</option>'
+           f'</select><button class="btn dark">Add</button></form>')
+    body = (f'<p class="kick">{e(_school_label(who["school"]))}</p><h1>Team</h1>'
+            f'<p class="sub">Everyone here can decide reports. Admins can also add colleagues, reset passwords and turn '
+            f'accounts off. Turning an account off signs that person out everywhere.</p>{box}'
+            f'<div class="card"><table class="rules team"><tr><th>Name</th><th>Email</th><th>Role</th><th>Last signed in</th>'
+            f'<th></th></tr>{"".join(trs)}</table></div>'
+            f'<div class="card"><h2>Add a colleague</h2><p class="sub">They get a temporary password, shown here once, '
+            f'and choose their own after signing in.</p>{add}</div>')
+    return _page("Team", body, who, token, status, on="team")
+
+
+@router.get("/review/team", response_class=HTMLResponse)
+def team(request: Request):
+    who, token = _who(request)
+    if not who:
+        return _to("/review/login")
+    if not _is_admin(who):
+        return _page("Team", '<div class="err">Only your career center\'s LureCheck admins can manage the team.</div>',
+                     who, token, 403)
+    return _team_page(who, token)
+
+
+@router.post("/review/team")
+async def team_change(request: Request):
+    who, token = _who(request)
+    if not who:
+        return _to("/review/login")
+    if not _is_admin(who):
+        return _page("Team", '<div class="err">Only your career center\'s LureCheck admins can manage the team.</div>',
+                     who, token, 403)
+    f = await _form(request)
+    if not acct.csrf_ok(token, f.get("csrf", "")):
+        return _expired(who, token)
+    st, op = _store(), f.get("op", "")
+    if op == "add":
+        school = who["school"] or (f.get("school", "") if f.get("school", "") in guardrails._config() else "")
+        if not school:
+            return _team_page(who, token, "Pick a school for the new account.", ok=False, status=400)
+        email, pw = acct.normalize_email(f.get("email", "")), acct.temp_password()
+        try:
+            st.add_reviewer(email, f.get("name", ""), school, acct.hash_password(pw),
+                            role="admin" if f.get("role") == "admin" else "reviewer", title=f.get("title", ""))
+        except ValueError as exc:
+            return _team_page(who, token, str(exc)[:1].upper() + str(exc)[1:] + ".", ok=False, status=400)
+        return _team_page(who, token, secret=(email, pw, True))
+    r = st.reviewer_by_email(acct.normalize_email(f.get("email", "")))
+    if r is None or (who["school"] and r.get("school") != who["school"]):
+        return _team_page(who, token, "That account isn't on your team.", ok=False, status=404)
+    if r["id"] == who["id"]:
+        return _team_page(who, token, "You can't change your own account here. Ask another admin.", ok=False, status=400)
+    if op == "reset":
+        pw = acct.temp_password()
+        st.set_reviewer(r["email"], pw_hash=acct.hash_password(pw))
+        st.drop_sessions(r["id"])
+        return _team_page(who, token, secret=(r["email"], pw, False))
+    if op in ("disable", "enable"):
+        st.set_reviewer(r["email"], active=op == "enable")
+        if op == "disable":
+            st.drop_sessions(r["id"])
+        return _team_page(who, token, f'{r["name"]} is {"off and signed out" if op == "disable" else "back on"}.')
+    if op == "role":
+        new = "reviewer" if r.get("role") == "admin" else "admin"
+        st.set_reviewer(r["email"], role=new)
+        return _team_page(who, token, f'{r["name"]} is now {"an admin" if new == "admin" else "a reviewer"}.')
+    return _team_page(who, token, "Unknown action.", ok=False, status=400)
 
 
 @router.get("/review/password", response_class=HTMLResponse)

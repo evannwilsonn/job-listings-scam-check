@@ -174,6 +174,14 @@ def test_reviewer_accounts_and_sessions(pg):
     from scam_detector import reviewers as acct
     rid = pg.add_reviewer("JDoe@FSU.edu", "J. Doe", "fsu", acct.hash_password("harbor violet ladder"))
     op = pg.add_reviewer("evan@example.com", "Evan", "", acct.hash_password("another long password"))
+    assert pg.reviewer_by_email("jdoe@fsu.edu")["role"] == "reviewer" and pg.reviewer_by_email("jdoe@fsu.edu")["title"] == ""
+    assert pg.set_reviewer("jdoe@fsu.edu", role="admin", title="Career Advisor")
+    assert {k: pg.reviewer_by_email("jdoe@fsu.edu")[k] for k in ("role", "title")} == {"role": "admin", "title": "Career Advisor"}
+    try:
+        pg.set_reviewer("jdoe@fsu.edu", role="owner")
+        raise AssertionError("an unknown role was accepted")
+    except ValueError:
+        pass
     import pytest
     with pytest.raises(ValueError):
         pg.add_reviewer("jdoe@fsu.edu", "Again", "fsu", "x")

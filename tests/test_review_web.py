@@ -35,8 +35,8 @@ def _client():
     return TestClient(api.app, follow_redirects=False)
 
 
-def _account(capsys, email="jdoe@fsu.edu", name="J. Doe", school="fsu"):
-    assert cli.main(["add", "--email", email, "--name", name, "--school", school]) == 0
+def _account(capsys, email="jdoe@fsu.edu", name="J. Doe", school="fsu", role="reviewer", title=""):
+    assert cli.main(["add", "--email", email, "--name", name, "--school", school, "--role", role, "--title", title]) == 0
     return re.search(r"shown once\): (\S+)", capsys.readouterr().out).group(1)
 
 
@@ -82,7 +82,7 @@ def test_login_queue_order_and_a_scam_decision(_isolated_store, capsys):
     assert rec["status"] == "confirmed" and rec["reviewer"] == "J. Doe" and rec["note"] == "check scam"
     assert [(l["label"], l["source"]) for l in st.labels()] == [("scam", "report")]
     assert st.templates()                                                              # template memory, via after_decision
-    assert "Copies of this script are now flagged" in c.get(r.headers["location"]).text
+    assert "Any student who checks a copy of this message is now warned" in c.get(r.headers["location"]).text
     assert c.post("/review/decide", data={"csrf": _csrf(html), "id": "2", "action": "real"}).status_code == 409
     assert c.post("/review/decide", data={"csrf": _csrf(html), "id": "3", "action": "scam"}).status_code == 404
     assert st.get_report("3")["status"] == "reported"
@@ -124,7 +124,7 @@ def test_real_aggregator_unclear_and_csrf(_isolated_store, capsys):
     assert [(l["label"], l["source"]) for l in st.labels()] == [("legit", "borderline_real")]   # aggregator: no label
     assert st.get_report("3")["status"] == "dismissed" and st.get_report("3")["note"] == "[aggregator] lead-gen funnel"
     decided = c.get("/review/queue?tab=decided").text
-    assert 'v-aggregator">Aggregator<' in decided and "Note: lead-gen funnel" in decided and "[aggregator]" not in decided
+    assert 'v-reposting">Reposting site<' in decided and "Note: lead-gen funnel" in decided and "[aggregator]" not in decided
     assert st.get_report("1")["note"] == "[unclear]" and 'v-not">Not enough to tell<' in decided and "[unclear]" not in decided
     assert 'v-real">Real job<' in decided and "Dismissed" not in decided
 
@@ -211,7 +211,7 @@ def test_aggregator_signals_from_the_reports_own_link(_isolated_store, capsys):
     c = _client()
     _login(c, "jdoe@fsu.edu", pw)
     html = c.get("/review/queue").text
-    assert html.count("Looks like an aggregator or lead-gen page") == 1 and "The apply link forces an account signup" in html
+    assert html.count("Looks like a reposting site, not the employer") == 1 and "The apply link forces an account signup" in html
     card = html[html.index('id="r-0"'):html.index('id="r-1"')]
     assert "<q>https://example.com/jobmatch/signup?ref=track123&amp;utm_source=feed</q>" in card        # the student's link
     assert "forces account creation" not in card                                         # not the rule's own wording
@@ -301,10 +301,57 @@ def test_rules_and_model_disagreeing_is_stated_and_not_preselected():
     a = {"score": 18, "band": "caution", "flags": [], "lead_gen": {}, "network": [], "model": {"probability": 0.94},
          "disagree": True}
     html = rw._card(r, a, who, "t" * 64)
-    assert "The rules and the trained model disagree." in html and "Model: 94% likely a scam" in html
-    assert "btn primary" not in html and "Trained model:" not in html
+    assert "LureCheck&#x27;s two checks disagree." in html and "Wording compared with known scams: 94% likely a scam" in html
+    assert "btn primary" not in html and html.count("Wording compared") == 1 and "model" not in html.lower()
     html = rw._card(dict(r, kind="borderline"), a, who, "t" * 64)
-    assert "Close call, and the rules and the trained model disagree." in html and "tag close" not in html
+    assert "Close call, and LureCheck&#x27;s two checks disagree." in html and "tag close" not in html
     a.update(disagree=False, model={"probability": 0.1})
     html = rw._card(r, a, who, "t" * 64)
     assert "disagree" not in html and 'class="btn primary" name="action" value="real"' in html
+
+
+def _temp(page: str) -> str:
+    return re.search(r'<p class="pw"><code>([^<]+)</code>', page).group(1)
+
+
+def test_team_page_for_admins(_isolated_store, capsys):
+    st = _isolated_store
+    pw = _account(capsys, "boss@fsu.edu", "Maria Rivera", "fsu", role="admin", title="Assistant Director, Career Center")
+    pw2 = _account(capsys)                                                                 # J. Doe, a reviewer
+    st.add_reviewer("x@ucf.edu", "Other School", "ucf", "x")                              # another school's account
+    c = _client()
+    _login(c, "boss@fsu.edu", pw)
+    home = c.get("/review").text
+    assert "<b>Maria Rivera</b><small>Assistant Director, Career Center</small>" in home and 'href="/review/team"' in home
+    page = c.get("/review/team").text
+    assert "J. Doe" in page and "Other School" not in page                                # own school only
+    token = _csrf(page)
+    page = c.post("/review/team", data={"csrf": token, "op": "add", "name": "James Okafor", "email": "JOkafor@fsu.edu",
+                                        "title": "Career Advisor", "role": "reviewer"}).text
+    temp = _temp(page)
+    rec = st.reviewer_by_email("jokafor@fsu.edu")
+    assert rec["school"] == "fsu" and rec["role"] == "reviewer" and rec["title"] == "Career Advisor"
+    assert _login(_client(), "jokafor@fsu.edu", temp).status_code == 303                 # the shown password works
+    assert c.post("/review/team", data={"csrf": token, "op": "add", "name": "Again", "email": "jokafor@fsu.edu"}).status_code == 400
+    # turn off signs them out everywhere; can't touch another school or yourself
+    j = _client()
+    _login(j, "jdoe@fsu.edu", pw2)
+    assert c.post("/review/team", data={"csrf": token, "op": "disable", "email": "jdoe@fsu.edu"}).status_code == 200
+    assert j.get("/review").status_code == 303 and _login(_client(), "jdoe@fsu.edu", pw2).status_code == 401
+    assert c.post("/review/team", data={"csrf": token, "op": "disable", "email": "x@ucf.edu"}).status_code == 404
+    assert c.post("/review/team", data={"csrf": token, "op": "role", "email": "boss@fsu.edu"}).status_code == 400
+    assert c.post("/review/team", data={"csrf": "0" * 64, "op": "enable", "email": "jdoe@fsu.edu"}).status_code == 403
+    c.post("/review/team", data={"csrf": token, "op": "role", "email": "jokafor@fsu.edu"})
+    assert st.reviewer_by_email("jokafor@fsu.edu")["role"] == "admin"
+    new = _temp(c.post("/review/team", data={"csrf": token, "op": "reset", "email": "jokafor@fsu.edu"}).text)
+    assert new != temp and _login(_client(), "jokafor@fsu.edu", new).status_code == 303
+
+
+def test_reviewers_cannot_manage_the_team(_isolated_store, capsys):
+    pw = _account(capsys)
+    c = _client()
+    _login(c, "jdoe@fsu.edu", pw)
+    home = c.get("/review").text
+    assert 'href="/review/team"' not in home and "<small>Career center staff</small>" in home
+    assert c.get("/review/team").status_code == 403
+    assert c.post("/review/team", data={"csrf": _csrf(home), "op": "add", "name": "X", "email": "x@fsu.edu"}).status_code == 403

@@ -23,7 +23,8 @@ Reviewer accounts for the review page (review_web.py, reviewers.py, tools/review
 
     store.add_reviewer(email, name, school, pw_hash) -> id     school "" means every school
     store.reviewer_by_email(email) -> record with pw_hash, or None / store.reviewers() -> [record without pw_hash]
-    store.set_reviewer(email, pw_hash=None, active=None) -> bool / store.touch_login(reviewer_id)
+    store.set_reviewer(email, pw_hash=None, active=None, role=None, title=None) -> bool / store.touch_login(reviewer_id)
+    accounts carry role ("reviewer" | "admin": an admin manages colleagues at their school) and a job title
     store.add_session(token_hash, reviewer_id, expires_at) / store.session_reviewer(token_hash) -> record or None
     store.drop_session(token_hash) / store.drop_sessions(reviewer_id) / store.get_report(id) -> record or None
     store.undo_decision(id, reviewer, within_seconds) -> record    the same reviewer, shortly after: back in the queue,
@@ -104,6 +105,19 @@ def _check_reviewer(email: str, name: str) -> tuple:
     if not name:
         raise ValueError("a reviewer needs a name (it's recorded on every decision)")
     return email, name
+
+
+ROLES = ("reviewer", "admin")
+
+
+def _check_role(role: Optional[str], title: Optional[str]) -> tuple:
+    if role is not None and role not in ROLES:
+        raise ValueError(f"role must be one of {', '.join(ROLES)}")
+    if title is not None:
+        title = " ".join(title.split())
+        if len(title) > 80:
+            raise ValueError("a title can be at most 80 characters")
+    return role, title
 
 
 def _check_decision(decision: str, reviewer: str) -> None:
@@ -382,21 +396,23 @@ class JsonlStore:
         return {**rows[i], "id": str(i)} if 0 <= i < len(rows) else None
 
     def _reviewer_rows(self) -> list:
-        return self._read(self._p("reviewers.jsonl"))
+        return [{"role": "reviewer", "title": "", **r} for r in self._read(self._p("reviewers.jsonl"))]
 
     @staticmethod
     def _public(r: dict) -> dict:
         return {k: v for k, v in r.items() if k != "pw_hash"}
 
-    def add_reviewer(self, email: str, name: str, school: str, pw_hash: str) -> str:
+    def add_reviewer(self, email: str, name: str, school: str, pw_hash: str, role: str = "reviewer",
+                     title: str = "") -> str:
         email, name = _check_reviewer(email, name)
+        role, title = _check_role(role, title)
         rows = self._reviewer_rows()
         if any(r["email"] == email for r in rows):
             raise ValueError(f"{email} already has an account")
         rid = str(len(rows) + 1)
         self._append(self._p("reviewers.jsonl"), {"id": rid, "email": email, "name": name, "school": school or "",
                                                   "pw_hash": pw_hash, "active": True, "created_at": time.time(),
-                                                  "last_login": None})
+                                                  "last_login": None, "role": role, "title": title})
         return rid
 
     def reviewer_by_email(self, email: str) -> Optional[dict]:
@@ -406,7 +422,9 @@ class JsonlStore:
     def reviewers(self) -> List[dict]:
         return [self._public(r) for r in self._reviewer_rows()]
 
-    def set_reviewer(self, email: str, pw_hash: Optional[str] = None, active: Optional[bool] = None) -> bool:
+    def set_reviewer(self, email: str, pw_hash: Optional[str] = None, active: Optional[bool] = None,
+                     role: Optional[str] = None, title: Optional[str] = None) -> bool:
+        role, title = _check_role(role, title)
         p, rows, hit = self._p("reviewers.jsonl"), self._reviewer_rows(), False
         for r in rows:
             if r["email"] == (email or "").strip().lower():
@@ -414,6 +432,10 @@ class JsonlStore:
                     r["pw_hash"] = pw_hash
                 if active is not None:
                     r["active"] = bool(active)
+                if role is not None:
+                    r["role"] = role
+                if title is not None:
+                    r["title"] = title
                 hit = True
         if hit:
             self._rewrite(p, rows)
@@ -857,24 +879,28 @@ class PostgresStore:
             row = cur.fetchone()
             return self._record(row) if row else None
 
-    _REVIEWER_COLS = "r.id, r.email, r.name, coalesce(r.school_id, ''), r.active, r.created_at, r.last_login"
+    _REVIEWER_COLS = ("r.id, r.email, r.name, coalesce(r.school_id, ''), r.active, r.created_at, r.last_login, "
+                      "r.role, r.title")
 
     @staticmethod
     def _reviewer(row) -> dict:
-        rid, email, name, school, active, created, last = row[:7]
+        rid, email, name, school, active, created, last, role, title = row[:9]
         rec = {"id": str(rid), "email": email, "name": name, "school": school, "active": active,
-               "created_at": _epoch(created), "last_login": _epoch(last)}
-        if len(row) > 7:
-            rec["pw_hash"] = row[7]
+               "created_at": _epoch(created), "last_login": _epoch(last), "role": role, "title": title}
+        if len(row) > 9:
+            rec["pw_hash"] = row[9]
         return rec
 
-    def add_reviewer(self, email: str, name: str, school: str, pw_hash: str) -> str:
+    def add_reviewer(self, email: str, name: str, school: str, pw_hash: str, role: str = "reviewer",
+                     title: str = "") -> str:
         email, name = _check_reviewer(email, name)
+        role, title = _check_role(role, title)
         with self._conn() as conn, conn.cursor() as cur:
             if school and self._school(cur, school) is None:
                 raise ValueError(f"unknown school {school!r}")
-            cur.execute("INSERT INTO reviewers (email, name, school_id, pw_hash) VALUES (%s, %s, %s, %s) "
-                        "ON CONFLICT (email) DO NOTHING RETURNING id", (email, name, school or None, pw_hash))
+            cur.execute("INSERT INTO reviewers (email, name, school_id, pw_hash, role, title) "
+                        "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (email) DO NOTHING RETURNING id",
+                        (email, name, school or None, pw_hash, role, title))
             row = cur.fetchone()
             if row is None:
                 raise ValueError(f"{email} already has an account")
@@ -892,10 +918,13 @@ class PostgresStore:
             cur.execute(f"SELECT {self._REVIEWER_COLS} FROM reviewers r ORDER BY r.id")
             return [self._reviewer(x) for x in cur.fetchall()]
 
-    def set_reviewer(self, email: str, pw_hash: Optional[str] = None, active: Optional[bool] = None) -> bool:
+    def set_reviewer(self, email: str, pw_hash: Optional[str] = None, active: Optional[bool] = None,
+                     role: Optional[str] = None, title: Optional[str] = None) -> bool:
+        role, title = _check_role(role, title)
         with self._conn() as conn, conn.cursor() as cur:
-            cur.execute("UPDATE reviewers SET pw_hash = coalesce(%s, pw_hash), active = coalesce(%s, active) "
-                        "WHERE email = %s", (pw_hash, active, (email or "").strip().lower()))
+            cur.execute("UPDATE reviewers SET pw_hash = coalesce(%s, pw_hash), active = coalesce(%s, active), "
+                        "role = coalesce(%s, role), title = coalesce(%s, title) WHERE email = %s",
+                        (pw_hash, active, role, title, (email or "").strip().lower()))
             return cur.rowcount > 0
 
     def touch_login(self, reviewer_id) -> None:
