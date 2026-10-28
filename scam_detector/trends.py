@@ -67,6 +67,12 @@ def _scams(st, school: str, a: float, b: float) -> list[dict]:
     return [l for l in st.labels() if l["label"] == "scam" and l.get("school") == school and a <= (l.get("at") or 0) < b]
 
 
+def _checks(st, school: str, month: str) -> dict:
+    from . import counts
+    nxt = (dt.date.fromisoformat(month + "-01") + dt.timedelta(days=32)).replace(day=1).isoformat()
+    return counts.totals(school, month + "-01", st, until=nxt)
+
+
 def monthly(school: str, month: str, st=None, model=None) -> dict:
     """Everything the report shows, as data."""
     from . import learning
@@ -129,6 +135,7 @@ def monthly(school: str, month: str, st=None, model=None) -> dict:
         "domains": [(d, n, shared.get(d, 0)) for d, n in domains.most_common(8)],
         "harm": [(HARM[k], n) for k, n in harm.most_common()], "followups": answered,
         "retrains": Counter(r["status"] for r in runs), "release": st.release(),
+        "checks": _checks(st, school, month),
         "real_jobs_labeled": sum(1 for l in st.labels() if l["label"] == "legit" and l.get("school") == school and a <= (l.get("at") or 0) < b),
     }
 
@@ -144,6 +151,10 @@ def render(d: dict, school_name: Optional[str] = None) -> str:
     y, m = (int(x) for x in d["month"].split("-"))
     title = f"{school_name or d['school']}: job-scam trends, {calendar.month_name[m]} {y}"
     lines = [f"# {title}", ""]
+    used = d.get("checks") or {}
+    if used.get("checks"):
+        lines += [f"Students ran **{used['checks']:,} checks** this month; {used['flagged']:,} were flagged as likely scams "
+                  f"or sent to a person on the spot.", ""]
     if not d["confirmed"] and not d["confirmed_prev"]:
         return "\n".join(lines + ["No confirmed scams this month or last. Reports that reviewers haven't decided yet aren't counted."])
     lines += [f"**{d['confirmed']} confirmed scams** targeted students this month ({d['confirmed_prev']} in "

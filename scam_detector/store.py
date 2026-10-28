@@ -29,6 +29,10 @@ Reviewer accounts for the review page (review_web.py, reviewers.py, tools/review
     store.undo_decision(id, reviewer, within_seconds) -> record    the same reviewer, shortly after: back in the queue,
         its training label removed, and (Postgres) its indicators un-confirmed unless another confirmed report names them
 
+How many checks students ran (counts.py), numbers only:
+
+    store.add_check_counts([(school, day, band, n)]) / store.check_counts(school, since_day) -> [(day, band, n)]
+
 A career center's own lists (guardrails.py):
 
     store.school_rules(school) -> [{kind, value, reason, added_by, added_at}]          active entries
@@ -321,6 +325,29 @@ class JsonlStore:
         if hit:
             self._rewrite(p, rows)
         return hit
+
+    # ---- check counts (counts.py) ----
+
+    def add_check_counts(self, rows) -> None:
+        p = self._p("check_counts.json")
+        data = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+        for school, day, band, n in rows:
+            k = f"{school}|{day}|{band}"
+            data[k] = data.get(k, 0) + int(n)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data), encoding="utf-8")
+        tmp.replace(p)
+
+    def check_counts(self, school: str, since: str) -> list:
+        p = self._p("check_counts.json")
+        data = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+        out = []
+        for k, n in data.items():
+            s, day, band = k.split("|")
+            if (not school or s == school) and day >= since:
+                out.append((day, band, n))
+        return out
 
     # ---- reviewer accounts (review_web.py) ----
 
@@ -767,6 +794,21 @@ class PostgresStore:
                         "WHERE school_id = %s AND kind = %s AND value = %s AND status = 'active'",
                         (removed_by.strip()[:80], school, kind, value))
             return cur.rowcount > 0
+
+    # ---- check counts (counts.py) ----
+
+    def add_check_counts(self, rows) -> None:
+        with self._conn() as conn, conn.cursor() as cur:
+            known = [(s, d, b, int(n)) for s, d, b, n in rows if self._school(cur, s) is not None]
+            if known:
+                cur.executemany("INSERT INTO check_counts (school_id, day, band, n) VALUES (%s, %s, %s, %s) "
+                                "ON CONFLICT (school_id, day, band) DO UPDATE SET n = check_counts.n + EXCLUDED.n", known)
+
+    def check_counts(self, school: str, since: str) -> list:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("SELECT day, band, sum(n) FROM check_counts WHERE (%(s)s = '' OR school_id = %(s)s) "
+                        "AND day >= %(d)s::date GROUP BY day, band", {"s": school or "", "d": since})
+            return [(d.isoformat(), b, int(n)) for d, b, n in cur.fetchall()]
 
     # ---- reviewer accounts (review_web.py) ----
 

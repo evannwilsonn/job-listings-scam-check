@@ -15,7 +15,7 @@ URL = os.environ.get("TEST_DATABASE_URL", "")
 pytestmark = pytest.mark.skipif(not re.search(r"/[\w-]*_test(\?|$)", URL), reason="no *_test database configured")
 
 TABLES = ("outcomes, cases, labels, sightings, report_indicators, templates, reports, indicators, model_traffic, release_log, "
-          "retrain_runs, models, reviewer_sessions, reviewers")
+          "retrain_runs, models, reviewer_sessions, reviewers, check_counts")
 
 
 @pytest.fixture()
@@ -217,3 +217,10 @@ def test_undo_reverts_status_label_and_indicators(pg):
         pg.undo_decision(b, "E. Wilson", 120)                                       # not their decision
     with pytest.raises(ValueError):
         pg.undo_decision(b, "Someone Else", 0)                                      # window passed
+
+
+def test_check_counts_add_up_and_skip_unknown_schools(pg):
+    pg.add_check_counts([("fsu", "2026-10-01", "clear", 3), ("fsu", "2026-10-01", "block", 1), ("nowhere", "2026-10-01", "clear", 9)])
+    pg.add_check_counts([("fsu", "2026-10-01", "clear", 2)])
+    assert sorted(pg.check_counts("fsu", "2026-10-01")) == [("2026-10-01", "block", 1), ("2026-10-01", "clear", 5)]
+    assert pg.check_counts("", "2026-10-02") == []

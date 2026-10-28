@@ -572,10 +572,15 @@ def queue(request: Request, tab: str = "waiting", done: str = "", n: str = "", a
     if stub and not placed:
         cards.insert(0, stub) if not at else cards.append(stub)
     if not scored:
-        month = dt.date.today().strftime("%Y-%m")
-        n_month = sum(1 for r in g["decided"] if (r.get("reviewed_at") or "").startswith(month))
-        msg = ("Nothing decided yet." if tab == "decided" else
-               f"Queue clear. You've decided {n_month} report{'s' if n_month != 1 else ''} this month; new ones show up here as students send them.")
+        from . import counts
+        week = counts.totals(who["school"], (dt.date.today() - dt.timedelta(days=6)).isoformat(), st)
+        if tab == "decided":
+            msg = "Nothing decided yet."
+        elif week["checks"]:
+            msg = (f"Queue clear. Students checked {week['checks']:,} message{'s' if week['checks'] != 1 else ''} this week "
+                   f"without needing you, and {week['flagged']:,} of them were flagged before anyone had to report them.")
+        else:
+            msg = "Queue clear. New reports show up here as students send them."
         cards.append(f'<div class="card empty">{e(msg)}</div>')
     sub = {"waiting": "Students who already acted come first, then the riskiest. Your answer becomes a training label, "
                       "so 'Not enough to tell' is better than a guess.",
@@ -611,6 +616,8 @@ def home(request: Request):
         tot["real"] += d["real_jobs_labeled"]
         for name, a, _ in d["families"]:
             fam[name] = fam.get(name, 0) + a
+    from . import counts
+    used = counts.totals(who["school"], month + "-01", st)
     acted = len(g["acted"])
     tiles = [(f'<a class="stat{" urgent" if acted else ""}" href="/review/queue?tab=acted"><span class="kick">Already acted</span>'
               f'<b>{acted}</b><span>students who sent money or details</span></a>', 0 if acted else 1),
@@ -619,8 +626,8 @@ def home(request: Request):
              (f'<a class="stat" href="/review/queue?tab=close"><span class="kick">Close calls</span><b>{len(g["close"])}</b>'
               f'<span>the detector asked for a person</span></a>', 2)]
     tiles = "".join(t for t, _ in sorted(tiles, key=lambda x: x[1]))
-    stats = (f'<div class="grid">{tiles}<div class="stat static"><span class="kick">This month</span><b>{tot["confirmed"]}</b>'
-             f'<span>scams confirmed ({tot["confirmed_prev"]} last month)</span></div></div>')
+    stats = (f'<div class="grid">{tiles}<div class="stat static"><span class="kick">This month</span><b>{used["checks"]:,}</b>'
+             f'<span>messages students checked, {used["flagged"]:,} flagged · {tot["confirmed"]} scams confirmed</span></div></div>')
     pct = round(tot["caught"] / tot["confirmed"] * 100) if tot["confirmed"] else 0
     keep = (f'<div class="card"><h2>Is the detector keeping up?</h2><p class="sub" style="margin-bottom:6px">Of this month\'s '
             f'confirmed scams, today\'s detector flags <b>{tot["caught"]} of {tot["confirmed"]}</b> on its own.</p>'
