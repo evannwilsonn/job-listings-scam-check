@@ -258,7 +258,7 @@ h2{font:700 19px/1.25 var(--display);margin:0 0 10px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:0 0 14px}
 .tabs{display:flex;gap:2px;flex-wrap:wrap;border-bottom:1px solid var(--line2);margin:0 0 16px}
 .tabs a{display:flex;align-items:baseline;gap:7px;padding:10px 14px 9px;text-decoration:none;color:var(--soft);font-weight:600;font-size:14px;border-bottom:3px solid transparent;margin-bottom:-1px}
-.tabs a b{font:600 18px var(--mono);color:var(--ink)}.tabs a.on{color:var(--ink);border-color:var(--gold)}.tabs a.urgent b{color:var(--r)}
+.tabs a b{font:600 18px var(--mono);color:var(--ink)}.t-short{display:none}.tabs a.on{color:var(--ink);border-color:var(--gold)}.tabs a.urgent b{color:var(--r)}
 .r-head{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;margin-bottom:8px}
 .r-id{font:500 12px var(--mono);color:var(--dim)}
 .pill{display:inline-flex;align-items:center;gap:6px;font:600 11.5px var(--mono);letter-spacing:.02em;border-radius:999px;padding:3px 10px;white-space:nowrap}
@@ -396,6 +396,8 @@ background:var(--navy2);border:1px solid #ffffff22;border-radius:12px;padding:8p
 .tabs a{white-space:nowrap;padding:10px 12px 9px}
 .doc{padding:18px}.kb,#kb-help{display:none}
 .grid{grid-template-columns:1fr 1fr;gap:10px}.stat{padding:12px 14px}.stat b{font-size:24px}
+.stat .kick{display:block;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.t-long{display:none}.t-short{display:inline}.tabs a{padding:10px 8px 9px;gap:5px}.tabs a b{font-size:16px}
 .card.done>details>summary{grid-template-columns:auto minmax(0,1fr);padding:12px 14px}.d-v{grid-column:2;grid-row:2}
 .d-meta{grid-column:2}.d-body{padding:12px 14px 14px}}
 @media (hover:hover) and (pointer:fine){.btn.primary:hover{background:var(--navy2)}.btn.ghost:hover{background:#F7F7F4;border-color:#C4C0B4}
@@ -522,7 +524,8 @@ def _ordered(st, who, tab: str):
 
 
 def _tabs(g: dict, on: str) -> str:
-    names = [("waiting", "Waiting"), ("acted", "Students who acted"), ("close", "Close calls"), ("decided", "Decided")]
+    names = [("waiting", "Waiting"), ("acted", '<span class="t-long">Students who acted</span><span class="t-short">Acted</span>'),
+             ("close", "Close calls"), ("decided", "Decided")]
     out = []
     for k, label in names:
         cls = " ".join(c for c in ("on" if k == on else "", "urgent" if k == "acted" and g[k] else "") if c)
@@ -577,10 +580,25 @@ def _buttons(a: dict, neutral: bool = False) -> str:
     """The likely answer is the primary button: scam when the detector leans that way, real job when it doesn't.
     No answer is pre-selected on close calls or when the rules and the model disagree: the reviewer's call there is
     the label, and an emphasised button would pull it toward the rules."""
-    lean = None if neutral else "scam" if a["band"] in ("block", "review") or a["network"] else "real"
+    scammy = a["band"] in ("block", "review") or a["network"]
+    lean = (None if neutral else "scam" if scammy else
+            "aggregator" if (a.get("lead_gen") or {}).get("flag") else "real")
     labels = [("scam", "It's a scam"), ("real", "It's a real job"), ("aggregator", "Aggregator"), ("unclear", "Not enough to tell")]
     return "".join(f'<button class="btn {"primary" if k == lean else "ghost"}" name="action" value="{k}">'
                    f'<i style="background:{DOT[k]}"></i>{t}</button>' for k, t in labels)
+
+
+def _agg_quote(text: str, rs: dict) -> str:
+    """Where in the student's message an aggregator sign sits: the words themselves, or the link it is about."""
+    m = (rs.get("matched") or [""])[0] or ""
+    if m and m.lower() in (text or "").lower():
+        return _matched_in(text, {"matched": [m]})[0]
+    head = m.split(" ")[0].rstrip(":").lower()
+    for url in _URL.findall(text or ""):
+        bare = url.lower().split("://", 1)[-1]
+        if head and (bare.startswith(head) or head in bare.split("?")[0]):
+            return url
+    return ""
 
 
 def _card(r: dict, a: dict, who: dict, token: str, tab: str = "waiting", impact: int = 0) -> str:
@@ -594,14 +612,15 @@ def _card(r: dict, a: dict, who: dict, token: str, tab: str = "waiting", impact:
     tags = [_seen_stamp(a)]
     if r.get("outcome") in HARM:
         tags.append(f'<span class="tag harm">Student already {e(HARM[r["outcome"]])}</span>')
-    if r.get("kind") == "borderline":
+    if r.get("kind") == "borderline" and not a.get("disagree"):
         tags.append('<span class="tag close">Close call: the detector asked for a person</span>')
     if lg.get("flag"):
         tags.append('<span class="tag agg">Looks like an aggregator or lead-gen page</span>')
     tags = "".join(t for t in tags if t)
     body = head + (f'<div class="tags">{tags}</div>' if tags else "")
     if a.get("disagree") and a.get("model"):
-        body += (f'<p class="split"><b>The rules and the trained model disagree.</b> Rules: {a["score"]} of 100. '
+        close = "Close call, and the" if r.get("kind") == "borderline" else "The"
+        body += (f'<p class="split"><b>{close} rules and the trained model disagree.</b> Rules: {a["score"]} of 100. '
                  f'Model: {_pct(a["model"]["probability"])} likely a scam. Read this one closely.</p>')
     body += f'<div class="text">{_highlight(text, a["flags"]) if text else "(the text was removed after 30 days)"}</div>'
     items, whys_all = [], []
@@ -620,9 +639,12 @@ def _card(r: dict, a: dict, who: dict, token: str, tab: str = "waiting", impact:
         whys_all += [(t or lead.get("title", ""), w) for t, w in whys if w]
         items.append(f'<li class="{sev}"><b>{e(lead.get("title", ""))}</b>'
                      f'{f"<q>{e(quote)}</q>" if quote else ""}{also}</li>')
-    agg = []
+    agg, by_quote = [], {}
     for rs in (lg.get("reasons") or [])[:3]:
-        agg.append(f'<li class="note"><q>{e((rs.get("matched") or [""])[0])}</q><span class="also">{e(rs.get("reason", ""))}</span></li>')
+        by_quote.setdefault(_agg_quote(text, rs), []).append(rs.get("reason", ""))
+    for quote, reasons in by_quote.items():
+        also = f'<span class="also">Also: {" · ".join(e(x) for x in reasons[1:])}</span>' if len(reasons) > 1 else ""
+        agg.append(f'<li class="note"><b>{e(reasons[0])}</b>{f"<q>{e(quote)}</q>" if quote else ""}{also}</li>')
     if items:
         body += f'<ul class="flags">{"".join(items)}</ul>'
     elif not decided:
@@ -779,7 +801,7 @@ def home(request: Request):
             f'confirmed scams, today\'s detector flags <b>{tot["caught"]} of {tot["confirmed"]}</b> on its own.</p>'
             + (f'<div class="bar"><i style="width:{pct}%"></i></div><p class="meta">{pct}% · the rest are what the next '
                f'rules and retrain learn from. {reals}</p>' if tot["confirmed"] >= MIN_RATE else
-               f'<p class="meta">Too few to call it a rate yet; a percentage shows from {MIN_RATE} confirmed scams. {reals}</p>')
+               f'<p class="meta">Too early for a rate. {reals}</p>')
             + '</div>'
             if tot["confirmed"] else
             '<div class="card"><h2>Is the detector keeping up?</h2><p class="sub">No confirmed scams yet this month. '

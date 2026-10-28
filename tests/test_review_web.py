@@ -212,6 +212,10 @@ def test_aggregator_signals_from_the_reports_own_link(_isolated_store, capsys):
     _login(c, "jdoe@fsu.edu", pw)
     html = c.get("/review/queue").text
     assert html.count("Looks like an aggregator or lead-gen page") == 1 and "The apply link forces an account signup" in html
+    card = html[html.index('id="r-0"'):html.index('id="r-1"')]
+    assert "<q>https://example.com/jobmatch/signup?ref=track123&amp;utm_source=feed</q>" in card        # the student's link
+    assert "forces account creation" not in card                                         # not the rule's own wording
+    assert 'class="btn primary" name="action" value="aggregator"' in card                 # leans aggregator, not real
 
 
 def test_evidence_first_card_and_undo(_isolated_store, capsys):
@@ -287,7 +291,7 @@ def test_decided_cards_and_home_show_what_confirmations_did(_isolated_store, cap
     assert "Since it was confirmed, this script has flagged 3 later checks." in c.get("/review/queue?tab=decided").text
     home = c.get("/review").text
     assert "flagged <b>3</b> later checks this month." in home
-    assert "Too few to call it a rate yet" in home and 'class="bar"' not in home              # 1 confirmed scam: no percentage
+    assert "Too early for a rate." in home and 'class="bar"' not in home              # 1 confirmed scam: no percentage
 
 
 def test_rules_and_model_disagreeing_is_stated_and_not_preselected():
@@ -299,6 +303,8 @@ def test_rules_and_model_disagreeing_is_stated_and_not_preselected():
     html = rw._card(r, a, who, "t" * 64)
     assert "The rules and the trained model disagree." in html and "Model: 94% likely a scam" in html
     assert "btn primary" not in html and "Trained model:" not in html
+    html = rw._card(dict(r, kind="borderline"), a, who, "t" * 64)
+    assert "Close call, and the rules and the trained model disagree." in html and "tag close" not in html
     a.update(disagree=False, model={"probability": 0.1})
     html = rw._card(r, a, who, "t" * 64)
     assert "disagree" not in html and 'class="btn primary" name="action" value="real"' in html
