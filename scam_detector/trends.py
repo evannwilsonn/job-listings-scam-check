@@ -173,7 +173,7 @@ def render(d: dict, school_name: Optional[str] = None) -> str:
             lines += [f"- \"{t.strip()}...\"" + (f" ({n} copies)" if n > 1 else "") for t, n in d["misses"]]
         lines.append("")
     if d["channels"]:
-        lines += ["## How they reached students", ""] + [f"- {n} scams {what}" for what, n in d["channels"]] + [""]
+        lines += ["## How they reached students", ""] + [f"- {n} scam{'s' if n != 1 else ''} {what}" for what, n in d["channels"]] + [""]
     if d["domains"]:
         lines += ["## Domains reviewers confirmed", "", "| Domain | Reports here | Schools that have seen it |", "|---|---|---|"]
         lines += [f"| {dom} | {n} | {s or '-'} |" for dom, n, s in d["domains"]]
@@ -190,7 +190,8 @@ def render(d: dict, school_name: Optional[str] = None) -> str:
         learned.append(f"{sum(rt.values())} retrain attempt{'s' if sum(rt.values()) != 1 else ''} "
                        f"({rt.get('candidate', 0)} passed the gate, {rt.get('refused', 0)} refused)")
     if d["real_jobs_labeled"]:
-        learned.append(f"{d['real_jobs_labeled']} real jobs labeled, which keeps false alarms down")
+        n = d["real_jobs_labeled"]
+        learned.append(f"{n} real job{'s' if n != 1 else ''} labeled, which keeps false alarms down")
     if rel.get("stage") and rel["stage"] != "none":
         learned.append(f"a new model is in {rel['stage']}")
     if learned:

@@ -207,6 +207,7 @@ def analyze(posting: PostingIn, request: Request) -> dict:
     tm = learning.template_finding("\n".join(x for x in (posting.title, posting.description) if x))
     if tm:
         extra.append(tm)
+        counts.record_hit((tm.get("memory") or {}).get("key", ""))    # how often confirmed scripts catch later copies
     _, att = attestation_findings(posting.company, posting.sender, posting.description, out["findings"] + extra)
     extra += att
     if extra or rules["trusted"] or rules["blocked"]:

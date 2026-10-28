@@ -13,6 +13,7 @@ from scam_detector.tools import reviewers as cli
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch):
     counts._pending.clear()
+    counts._hits.clear()
     monkeypatch.setenv("REVIEW_COOKIE_SECURE", "0")
     review_web.login_limiter._hits.clear()
     yield

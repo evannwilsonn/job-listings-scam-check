@@ -15,7 +15,7 @@ URL = os.environ.get("TEST_DATABASE_URL", "")
 pytestmark = pytest.mark.skipif(not re.search(r"/[\w-]*_test(\?|$)", URL), reason="no *_test database configured")
 
 TABLES = ("outcomes, cases, labels, sightings, report_indicators, templates, reports, indicators, model_traffic, release_log, "
-          "retrain_runs, models, reviewer_sessions, reviewers, check_counts")
+          "retrain_runs, models, reviewer_sessions, reviewers, check_counts, template_hits")
 
 
 @pytest.fixture()
@@ -224,3 +224,10 @@ def test_check_counts_add_up_and_skip_unknown_schools(pg):
     pg.add_check_counts([("fsu", "2026-10-01", "clear", 2)])
     assert sorted(pg.check_counts("fsu", "2026-10-01")) == [("2026-10-01", "block", 1), ("2026-10-01", "clear", 5)]
     assert pg.check_counts("", "2026-10-02") == []
+
+
+def test_template_hits_add_up(pg):
+    pg.add_template_hits([("abc123", "2026-10-01", 2), ("abc123", "2026-10-02", 1), ("zzz", "2026-10-02", 5)])
+    pg.add_template_hits([("abc123", "2026-10-02", 4)])
+    assert pg.template_hits(["abc123", "nope"]) == {"abc123": 7}
+    assert pg.template_hits(["abc123"], "2026-10-02") == {"abc123": 5}

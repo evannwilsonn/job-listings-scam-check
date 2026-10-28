@@ -47,7 +47,7 @@ TAG_AGGREGATOR = "[aggregator]"
 _URL = re.compile(r"https?://[^\s<>\"')\]]+", re.I)
 FONTS = ("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,500..700,0..100"
          "&family=Martian+Mono:wdth,wght@75..100,400..600&family=Plus+Jakarta+Sans:wght@400..700&display=swap")
-HEADERS = {"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; "
+HEADERS = {"Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'unsafe-inline' https://fonts.googleapis.com; "
                                       "font-src https://fonts.gstatic.com; form-action 'self'; frame-ancestors 'none'; "
                                       "base-uri 'none'",
            "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store"}
@@ -167,6 +167,37 @@ def _matched_in(text: str, f: dict) -> list:
             i = low.index(m.lower())
             out.append(text[i:i + len(m)])
     return out
+
+
+def _spans(text: str, f: dict) -> list:
+    low, out = text.lower(), []
+    for m in _matched_in(text, f):
+        i = low.find(m.lower())
+        while i != -1:
+            out.append((i, i + len(m)))
+            i = low.find(m.lower(), i + len(m))
+    return out
+
+
+def _flag_groups(text: str, flags: list) -> list:
+    """Flags whose matched words overlap in the message, merged into one line led by the strongest."""
+    spans = [_spans(text, f) for f in flags]
+    parent = list(range(len(flags)))
+
+    def root(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+    for i in range(len(flags)):
+        for j in range(i + 1, len(flags)):
+            if any(a < d and c < b for a, b in spans[i] for c, d in spans[j]):
+                parent[root(j)] = root(i)
+    groups: dict = {}
+    for i, f in enumerate(flags):
+        groups.setdefault(root(i), []).append(f)
+    out = [sorted(g, key=lambda f: -f.get("weight", 0)) for g in groups.values()]
+    return sorted(out, key=lambda g: -sum(f.get("weight", 0) for f in g))
 
 
 def _highlight(text: str, flags: list) -> str:
@@ -317,6 +348,34 @@ body{font-size:16px}h1{font-size:30px}h2{font-size:22px}
 .stub p{margin:0;flex:1 1 360px}.stub form{margin:0}
 .stub{transition:opacity 220ms var(--ease-out),transform 220ms var(--ease-out)}@starting-style{.stub{opacity:0;transform:translateY(-4px)}}
 .stat.static{background:transparent;box-shadow:none;border-style:dashed}
+.also{display:block;grid-column:1;color:var(--dim);font-size:14px}
+.flags details p+p{margin-top:6px}
+.impact{margin:8px 0 0;font-size:14px;color:#1E7350;font-weight:600}
+.impact-card{border-color:#CFE7DA}.impact-card b{font-family:var(--mono)}
+kbd{font:600 12px var(--mono);border:1px solid var(--line2);border-bottom-width:2px;border-radius:5px;padding:0 5px;background:#fff;color:var(--ink)}
+.kb{margin:-8px 0 14px}.kb-help .list li{font-size:14px}
+article.card.kb-focus{outline:2px solid var(--gold);outline-offset:3px}
+article.card:focus{outline:none}article.card.kb-focus:focus{outline:2px solid var(--gold)}
+.doc-bar{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;margin:0 0 12px}.doc-bar p{margin:0}
+.doc{padding:22px 26px;max-width:760px}.doc h2{font-size:22px;margin:0 0 12px}.doc h3{font:700 16px var(--sans);margin:20px 0 6px}
+.doc p,.doc li{font-size:16px;max-width:68ch}.doc ul{padding-left:20px;margin:0}
+.doc table{border-collapse:collapse;margin:6px 0 4px;font-size:14px;font-variant-numeric:tabular-nums}
+.doc th,.doc td{text-align:left;padding:7px 14px 7px 0;border-bottom:1px solid var(--line)}
+.doc th{font:600 12px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+.doc em{color:var(--dim);font-style:normal;font-size:14px}
+.mnav{display:none}
+@media (max-width:720px){
+.hd{flex-wrap:nowrap;min-height:56px}nav.main,.hd>.me{display:none}
+.mnav{display:block;margin-left:auto;position:relative}
+.mnav summary{list-style:none;cursor:pointer;color:#fff;font:600 14px var(--sans);border:1px solid #ffffff3a;border-radius:8px;padding:7px 12px}
+.mnav summary::-webkit-details-marker{display:none}.mnav summary::after{content:" ▾";color:var(--gold-hi)}
+.mnav-body{position:absolute;right:0;top:calc(100% + 8px);z-index:5;min-width:240px;display:flex;flex-direction:column;gap:2px;
+background:var(--navy2);border:1px solid #ffffff22;border-radius:12px;padding:8px;box-shadow:0 12px 32px -8px rgb(0 0 0/.45)}
+.mnav-body a{color:#E8ECF4;text-decoration:none;padding:9px 10px;border-radius:7px;font-weight:600;font-size:14px}
+.mnav-body a.on{background:#ffffff1a}.mnav-body .me{flex-direction:column;align-items:flex-start;gap:8px;padding:10px;border-top:1px solid #ffffff1a;margin-top:4px}
+.tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}.tabs::-webkit-scrollbar{display:none}
+.tabs a{white-space:nowrap;padding:10px 12px 9px}
+.doc{padding:18px}.kb,#kb-help{display:none}}
 @media (hover:hover) and (pointer:fine){.btn.primary:hover{background:var(--navy2)}.btn.ghost:hover{background:#F7F7F4;border-color:#C4C0B4}
 .flags summary:hover b{text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:3px}}
 """
@@ -330,14 +389,17 @@ def _page(title: str, body: str, who=None, token: str = "", status: int = 200, o
     if who:
         links = [("home", "/review", "Home"), ("queue", "/review/queue", "Reports"), ("trends", "/review/trends", "Trends"),
                  ("settings", "/review/settings", "School settings"), ("password", "/review/password", "Password")]
-        nav = ('<nav class="main">' + "".join(f'<a href="{h}"{" class=on" if k == on else ""}>{t}</a>' for k, h, t in links)
-               + f'</nav><div class="me"><span>{e(who["name"])} · {e(_school_label(who["school"]))}</span>'
-                 f'<form method="post" action="/review/logout"><input type="hidden" name="csrf" value="{acct.csrf_for(token)}">'
-                 f'<button>Log out</button></form></div>')
+        items = "".join(f'<a href="{h}"{" class=on" if k == on else ""}>{t}</a>' for k, h, t in links)
+        me = (f'<div class="me"><span>{e(who["name"])} · {e(_school_label(who["school"]))}</span>'
+              f'<form method="post" action="/review/logout"><input type="hidden" name="csrf" value="{acct.csrf_for(token)}">'
+              f'<button>Log out</button></form></div>')
+        current = next((t for k, _, t in links if k == on), "Menu")
+        nav = (f'<nav class="main">{items}</nav>{me}'
+               f'<details class="mnav"><summary>{e(current)}</summary><div class="mnav-body">{items}{me}</div></details>')
     doc = (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,'
            f'initial-scale=1"><title>{e(title)} · LureCheck for career centers</title>'
            f'<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
-           f'<link rel="stylesheet" href="{FONTS}"><style>{CSS}</style></head><body>'
+           f'<link rel="stylesheet" href="{FONTS}"><style>{CSS}</style><script src="/review/assets/review.js" defer></script></head><body>'
            f'<header><div class="hd"><a class="brand" href="/review">{MARK}LureCheck<small>Staff</small></a>{nav}</div></header>'
            f'<main>{body}</main></body></html>')
     return HTMLResponse(doc, status_code=status, headers=HEADERS)
@@ -361,6 +423,16 @@ def _login_page(error: str = "", status: int = 200) -> HTMLResponse:
                            f'<label for="pw">Password</label><input id="pw" name="password" type="password" '
                            f'autocomplete="current-password" required><button class="btn dark">Log in</button></form></div>',
                  status=status)
+
+
+_SCRIPT = os.path.join(os.path.dirname(__file__), "static", "review.js")
+
+
+@router.get("/review/assets/review.js")
+def review_script():
+    from fastapi.responses import Response
+    with open(_SCRIPT, "rb") as fh:
+        return Response(fh.read(), media_type="application/javascript", headers={"Cache-Control": "no-cache"})
 
 
 @router.get("/review/login", response_class=HTMLResponse)
@@ -471,7 +543,7 @@ def _buttons(a: dict) -> str:
                    f'<i style="background:{DOT[k]}"></i>{t}</button>' for k, t in labels)
 
 
-def _card(r: dict, a: dict, who: dict, token: str, tab: str = "waiting") -> str:
+def _card(r: dict, a: dict, who: dict, token: str, tab: str = "waiting", impact: int = 0) -> str:
     decided = tab == "decided"
     text = r.get("text_masked") or ""
     lg = a.get("lead_gen") or {}
@@ -495,16 +567,22 @@ def _card(r: dict, a: dict, who: dict, token: str, tab: str = "waiting") -> str:
     body = head + (f'<div class="tags">{tags}</div>' if tags else "")
     body += f'<div class="text">{_highlight(text, a["flags"]) if text else "(the text was removed after 30 days)"}</div>'
     items = []
-    for f in a["flags"]:
-        sev = "crit" if f.get("severity") == "critical" else "warn"
-        if f.get("rule_id") == "confirmed_scam_indicator":
-            quote, why = ", ".join(m["value"] for m in a["network"] if m["kind"] == "domain"), _network_why(a)
+    for group in _flag_groups(text, a["flags"]):
+        lead = group[0]
+        sev = "crit" if any(f.get("severity") == "critical" for f in group) else "warn"
+        if lead.get("rule_id") == "confirmed_scam_indicator":
+            quote = ", ".join(m["value"] for m in a["network"] if m["kind"] == "domain")
+            whys = [("", _network_why(a))]
         else:
-            q = _matched_in(text, f)
-            quote, why = (q[0] if q else ""), f.get("why", "")
-        items.append(f'<li class="{sev}"><details><summary><b>{e(f.get("title", ""))}</b>'
-                     f'{f"<q>{e(quote)}</q>" if quote else ""}<span class="why-t">Why</span></summary>'
-                     f'<p>{e(why)}</p></details></li>')
+            quotes = [q for f in group for q in _matched_in(text, f)]
+            quote = max(quotes, key=len) if quotes else ""
+            whys = [(f.get("title", "") if len(group) > 1 else "", f.get("why", "")) for f in group]
+        also = (f'<span class="also">Also: {" · ".join(e(f.get("title", "")) for f in group[1:])}</span>'
+                if len(group) > 1 else "")
+        body_why = "".join(f'<p>{f"<b>{e(t)}.</b> " if t else ""}{e(w)}</p>' for t, w in whys)
+        items.append(f'<li class="{sev}"><details><summary><b>{e(lead.get("title", ""))}</b>'
+                     f'{f"<q>{e(quote)}</q>" if quote else ""}{also}<span class="why-t">Why</span></summary>'
+                     f'{body_why}</details></li>')
     for rs in (lg.get("reasons") or [])[:3]:
         items.append(f'<li class="note"><details><summary><b>Aggregator signal</b><q>{e((rs.get("matched") or [""])[0])}</q>'
                      f'<span class="why-t">Why</span></summary><p>{e(rs.get("reason", ""))}</p></details></li>')
@@ -529,6 +607,9 @@ def _card(r: dict, a: dict, who: dict, token: str, tab: str = "waiting") -> str:
         note = (r.get("note") or "").replace(TAG_AGGREGATOR, "").strip()
         if note:
             body += f'<p class="meta">Note: {e(note)}</p>'
+        if impact:
+            body += (f'<p class="impact">Since it was confirmed, this script has flagged {impact:,} later '
+                     f'check{"s" if impact != 1 else ""}.</p>')
         return f'<article class="card" id="r-{e(r["id"])}">{body}</article>'
     body += (f'<form class="decide" method="post" action="/review/decide"><input type="hidden" name="csrf" '
              f'value="{acct.csrf_for(token)}"><input type="hidden" name="id" value="{e(r["id"])}">'
@@ -563,12 +644,19 @@ def queue(request: Request, tab: str = "waiting", done: str = "", n: str = "", a
     st = _store()
     g, scored = _ordered(st, who, tab)
     stub = _stub(n, done, token, tab) if (done in FLASH or done == "undone") and n.isdigit() else ""
+    impact = {}
+    if tab == "decided":
+        from . import counts, memory
+        keys = {str(r["id"]): memory.text_key(r["text_masked"]) for r, _ in scored
+                if r.get("status") == "confirmed" and r.get("text_masked")}
+        found = counts.hits(list(keys.values()), st=st)
+        impact = {rid: found.get(k, 0) for rid, k in keys.items()}
     cards, placed = [], False
     for r, a in scored:
         if stub and not placed and str(r["id"]) == at:
             cards.append(stub)
             placed = True
-        cards.append(_card(r, a, who, token, tab))
+        cards.append(_card(r, a, who, token, tab, impact.get(str(r["id"]), 0)))
     if stub and not placed:
         cards.insert(0, stub) if not at else cards.append(stub)
     if not scored:
@@ -589,8 +677,17 @@ def queue(request: Request, tab: str = "waiting", done: str = "", n: str = "", a
                     "These teach the detector the most.",
            "decided": f"The last {QUEUE_MAX} decisions. You can undo your own for {UNDO_SECONDS // 60} minutes; "
                       f"after that, ask the operator."}[tab]
+    keys = ('<p class="meta kb" id="kb-hint" hidden>Keyboard: <kbd>J</kbd> <kbd>K</kbd> move · <kbd>S</kbd> scam · '
+            '<kbd>R</kbd> real job · <kbd>A</kbd> aggregator · <kbd>N</kbd> not enough to tell · <kbd>U</kbd> undo · '
+            '<kbd>?</kbd> all keys</p>'
+            '<div class="card kb-help" id="kb-help" hidden><h2>Keyboard</h2><ul class="list">'
+            '<li><span>Next / previous report</span><b><kbd>J</kbd> <kbd>K</kbd></b></li>'
+            '<li><span>It\'s a scam</span><b><kbd>S</kbd></b></li><li><span>It\'s a real job</span><b><kbd>R</kbd></b></li>'
+            '<li><span>Aggregator</span><b><kbd>A</kbd></b></li><li><span>Not enough to tell</span><b><kbd>N</kbd></b></li>'
+            '<li><span>Write a note</span><b><kbd>E</kbd></b></li><li><span>Undo the last decision</span><b><kbd>U</kbd></b></li>'
+            '<li><span>Show or hide this</span><b><kbd>?</kbd></b></li></ul></div>')
     return _page("Reports", f'<p class="kick">{e(_school_label(who["school"]))}</p><h1>Reports from students</h1>'
-                            f'{_tabs(g, tab)}<p class="sub">{e(sub)}</p>{"".join(cards)}', who, token, on="queue")
+                            f'{_tabs(g, tab)}<p class="sub">{e(sub)}</p>{keys}{"".join(cards)}', who, token, on="queue")
 
 
 @router.get("/review", response_class=HTMLResponse)
@@ -645,6 +742,20 @@ def home(request: Request):
                   f'<b>{e("Scam" if r.get("status") == "confirmed" else "Aggregator" if (r.get("note") or "").startswith(TAG_AGGREGATOR) else "Dismissed")}</b></li>'
                   for r in recent)
     rec = f'<div class="card"><h2>Latest decisions</h2><ul class="list">{rec}</ul></div>' if rec else ""
+    from . import memory
+    mine = [memory.text_key(r["text_masked"]) for r in g["decided"]
+            if r.get("status") == "confirmed" and r.get("reviewer") == who["name"] and r.get("text_masked")]
+    if mine:
+        ever = sum(counts.hits(mine, st=st).values())
+        this = sum(counts.hits(mine, since=month + "-01", st=st).values())
+        did = (f'<div class="card impact-card"><h2>What your confirmations did</h2><p class="sub" style="margin:0">'
+               f'Scripts you confirmed have flagged <b>{ever:,}</b> later check{"s" if ever != 1 else ""}'
+               f'{f", {this:,} of them this month" if ever else ""}. Each one is a student who saw the warning '
+               f'before replying.</p></div>' if ever else
+               f'<div class="card impact-card"><h2>What your confirmations did</h2><p class="sub" style="margin:0">'
+               f'You\'ve confirmed {len(mine)} scam{"s" if len(mine) != 1 else ""}. When a copy reaches another student, '
+               f'it\'s flagged on the spot and counted here.</p></div>')
+        rec = did + rec
     hello = who["name"].split(" ")[0] if who["name"] else ""
     return _page("Home", f'<p class="kick">{e(_school_label(who["school"]))} · {e(_day(dt.date.today().isoformat()))}</p>'
                          f'<h1>Hi {e(hello)}.</h1><p class="sub">Here\'s what needs you and how your students are doing.</p>'
@@ -884,7 +995,56 @@ def trends_page(request: Request, month: str = "", school: str = ""):
         text = trends.render(trends.monthly(school, month, _store()), _school_label(school))
     except Exception as exc:                            # noqa: BLE001
         text = f"The report couldn't be built: {exc}"
-    nav = (f'<p class="meta"><a href="/review/trends?month={prev}{q}">← {prev}</a> · '
-           f'<a href="/review/trends?month={nxt}{q}">{nxt} →</a> · Ready to forward: copy it into an email.</p>')
-    return _page("Trends", f'{picker}<p class="kick">Monthly report</p><h1>Trends</h1>{nav}<div class="card report">{e(text)}</div>',
-                 who, token, on="trends")
+    later = nxt <= dt.date.today().strftime("%Y-%m")
+    nav = (f'<div class="doc-bar"><p class="meta"><a href="/review/trends?month={prev}{q}">← {_month_name(prev)}</a>'
+           f'{f" · <a href={chr(34)}/review/trends?month={nxt}{q}{chr(34)}>{_month_name(nxt)} →</a>" if later else ""}</p>'
+           f'<button class="btn ghost" type="button" data-copy="report-doc" hidden>Copy for email</button></div>')
+    return _page("Trends", f'{picker}<p class="kick">Monthly report · ready to forward</p><h1>Trends</h1>{nav}'
+                           f'<article class="card doc" id="report-doc">{_md(text)}</article>', who, token, on="trends")
+
+
+def _month_name(m: str) -> str:
+    import calendar
+    return f"{calendar.month_name[int(m[5:])]} {m[:4]}"
+
+
+def _inline(t: str) -> str:
+    t = e(t)
+    t = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", t)
+    return re.sub(r"(?<![\w])_(.+?)_(?![\w])", r"<em>\1</em>", t)
+
+
+def _md(text: str) -> str:
+    """The trends report's Markdown (headings, paragraphs, bullets, one kind of table) as HTML for the page and email."""
+    out, lines, i = [], text.splitlines(), 0
+    while i < len(lines):
+        ln = lines[i].rstrip()
+        if not ln.strip():
+            i += 1
+            continue
+        if ln.startswith("# "):
+            out.append(f"<h2>{_inline(ln[2:])}</h2>")
+        elif ln.startswith("## "):
+            out.append(f"<h3>{_inline(ln[3:])}</h3>")
+        elif ln.startswith("|"):
+            rows = []
+            while i < len(lines) and lines[i].startswith("|"):
+                cells = [c.strip() for c in lines[i].strip().strip("|").split("|")]
+                if not all(set(c) <= set("-: ") for c in cells):
+                    rows.append(cells)
+                i += 1
+            head, body = rows[0], rows[1:]
+            out.append('<table><thead><tr>' + "".join(f"<th>{_inline(c)}</th>" for c in head) + "</tr></thead><tbody>"
+                       + "".join("<tr>" + "".join(f"<td>{_inline(c)}</td>" for c in r) + "</tr>" for r in body) + "</tbody></table>")
+            continue
+        elif ln.startswith("- "):
+            items = []
+            while i < len(lines) and lines[i].startswith("- "):
+                items.append(f"<li>{_inline(lines[i][2:])}</li>")
+                i += 1
+            out.append("<ul>" + "".join(items) + "</ul>")
+            continue
+        else:
+            out.append(f"<p>{_inline(ln)}</p>")
+        i += 1
+    return "".join(out)

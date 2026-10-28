@@ -32,6 +32,7 @@ Reviewer accounts for the review page (review_web.py, reviewers.py, tools/review
 How many checks students ran (counts.py), numbers only:
 
     store.add_check_counts([(school, day, band, n)]) / store.check_counts(school, since_day) -> [(day, band, n)]
+    store.add_template_hits([(template_key, day, n)]) / store.template_hits(keys, since_day="") -> {key: n}
 
 A career center's own lists (guardrails.py):
 
@@ -338,6 +339,27 @@ class JsonlStore:
         tmp = p.with_suffix(".tmp")
         tmp.write_text(json.dumps(data), encoding="utf-8")
         tmp.replace(p)
+
+    def add_template_hits(self, rows) -> None:
+        p = self._p("template_hits.json")
+        data = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+        for key, day, n in rows:
+            k = f"{key}|{day}"
+            data[k] = data.get(k, 0) + int(n)
+        tmp = p.with_suffix(".tmp")
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(json.dumps(data), encoding="utf-8")
+        tmp.replace(p)
+
+    def template_hits(self, keys, since: str = "") -> dict:
+        p = self._p("template_hits.json")
+        data = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+        want, out = set(keys), {}
+        for k, n in data.items():
+            key, day = k.split("|")
+            if key in want and day >= (since or ""):
+                out[key] = out.get(key, 0) + n
+        return out
 
     def check_counts(self, school: str, since: str) -> list:
         p = self._p("check_counts.json")
@@ -803,6 +825,18 @@ class PostgresStore:
             if known:
                 cur.executemany("INSERT INTO check_counts (school_id, day, band, n) VALUES (%s, %s, %s, %s) "
                                 "ON CONFLICT (school_id, day, band) DO UPDATE SET n = check_counts.n + EXCLUDED.n", known)
+
+    def add_template_hits(self, rows) -> None:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.executemany("INSERT INTO template_hits (text_key, day, n) VALUES (%s, %s, %s) "
+                            "ON CONFLICT (text_key, day) DO UPDATE SET n = template_hits.n + EXCLUDED.n",
+                            [(k, d, int(n)) for k, d, n in rows])
+
+    def template_hits(self, keys, since: str = "") -> dict:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("SELECT text_key, sum(n) FROM template_hits WHERE text_key = ANY(%s) AND day >= %s::date GROUP BY text_key",
+                        (list(keys), since or "1970-01-01"))
+            return {k: int(n) for k, n in cur.fetchall()}
 
     def check_counts(self, school: str, since: str) -> list:
         with self._conn() as conn, conn.cursor() as cur:

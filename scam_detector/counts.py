@@ -6,6 +6,8 @@ flagged before anyone reported them") and lets an empty review queue say what st
     counts.record(school, band)                 called by /analyze; only schools in schools.json are counted
     counts.flush()                              writes what's pending (every FLUSH_N checks or FLUSH_SECONDS)
     counts.totals(school, since_day) -> {"checks": n, "flagged": n}     school "" sums every school
+    counts.record_hit(template_key)             a check matched a confirmed scam script (template memory)
+    counts.hits(keys, since_day="") -> {key: n} how many later checks each confirmed script flagged
 
 Counting is best-effort: a store outage loses a few counts, never a check.
 """
@@ -25,6 +27,7 @@ FLAGGED = ("review", "block")
 FLUSH_N = int(os.environ.get("CHECK_COUNT_FLUSH_N", "50"))
 FLUSH_SECONDS = float(os.environ.get("CHECK_COUNT_FLUSH_SECONDS", "60"))
 _pending: dict = {}
+_hits: dict = {}
 _lock = threading.Lock()
 _last = {"at": time.time()}
 
@@ -56,17 +59,54 @@ def record(school: str, band: str, st=None) -> None:
         log.exception("check count failed")
 
 
+def record_hit(key: str, st=None) -> None:
+    """Count one check that matched a confirmed scam script. The key is the script's hash, never its text."""
+    try:
+        if not key or len(key) > 64:
+            return
+        k = (key, dt.datetime.now(dt.timezone.utc).date().isoformat())
+        with _lock:
+            _hits[k] = _hits.get(k, 0) + 1
+            due = sum(_hits.values()) >= FLUSH_N or time.time() - _last["at"] >= FLUSH_SECONDS
+        if due:
+            flush(st)
+    except Exception:                                   # noqa: BLE001
+        log.exception("template hit count failed")
+
+
 def flush(st=None) -> None:
     with _lock:
         rows = [(s, d, b, n) for (s, d, b), n in _pending.items()]
+        hits = [(k, d, n) for (k, d), n in _hits.items()]
         _pending.clear()
+        _hits.clear()
         _last["at"] = time.time()
-    if not rows:
-        return
+    if rows:
+        try:
+            _store(st).add_check_counts(rows)
+        except Exception:                               # noqa: BLE001
+            log.exception("could not save %d check counts", sum(r[3] for r in rows))
+    if hits:
+        try:
+            _store(st).add_template_hits(hits)
+        except Exception:                               # noqa: BLE001
+            log.exception("could not save %d template hits", sum(r[2] for r in hits))
+
+
+def hits(keys, since: str = "", st=None) -> dict:
+    """Later checks each confirmed script flagged, by template key (pending ones included)."""
+    keys = [k for k in keys if k]
+    if not keys:
+        return {}
     try:
-        _store(st).add_check_counts(rows)
+        out = dict(_store(st).template_hits(keys, since))
     except Exception:                                   # noqa: BLE001
-        log.exception("could not save %d check counts", sum(r[3] for r in rows))
+        out = {}
+    with _lock:
+        for (k, d), n in _hits.items():
+            if k in keys and d >= since:
+                out[k] = out.get(k, 0) + n
+    return out
 
 
 def totals(school: str, since: str, st=None, until: Optional[str] = None) -> dict:

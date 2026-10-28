@@ -2,6 +2,7 @@
 risk, decisions that become training labels exactly like tools/review_queue.py, cross-school evidence, the school's own
 domain lists, CSRF on every form, and no scripts on any page."""
 
+import datetime as dt
 import re
 
 import pytest
@@ -21,6 +22,9 @@ def _env(monkeypatch):
     monkeypatch.setenv("REVIEW_COOKIE_SECURE", "0")
     review_web.login_limiter._hits.clear()
     guardrails.clear_cache()
+    from scam_detector import counts
+    counts._pending.clear()
+    counts._hits.clear()
     yield
     guardrails.clear_cache()
 
@@ -61,7 +65,8 @@ def test_login_queue_order_and_a_scam_decision(_isolated_store, capsys):
     page = c.get("/review/queue")
     html = page.text
     csp = page.headers["content-security-policy"]
-    assert "<script" not in html and "default-src 'none'" in csp and "script-src" not in csp
+    assert "default-src 'none'" in csp and "script-src 'self';" in csp                      # this site's own file only
+    assert re.findall(r"<script[^>]*>", html) == ['<script src="/review/assets/review.js" defer>']  # nothing inline
     assert "<b>3</b>Waiting" in html and "Kestrelwood" not in html                           # school-scoped
     assert "850-555-0142" not in html                                                  # masked before it was stored
     order = [int(x) for x in re.findall(r"Report #(\d+)", html)]
@@ -239,3 +244,40 @@ def test_evidence_first_card_and_undo(_isolated_store, capsys):
     assert o.post("/review/undo", data={"csrf": _csrf(o.get("/review").text), "id": "0"}).status_code == 409
     with pytest.raises(ValueError):
         st.undo_decision("0", "J. Doe", -1)                                                # window passed
+
+
+def test_overlapping_flags_merge_and_trends_document(_isolated_store, capsys):
+    st = _isolated_store
+    pw = _account(capsys)
+    st.add_report(make_report(SCAM, school="fsu"))
+    c = _client()
+    _login(c, "jdoe@fsu.edu", pw)
+    html = c.get("/review/queue").text
+    card = html[html.index('id="r-0"'):]
+    # "mail you a check to buy office equipment", "mail you a check" and "check to buy" are one line now
+    assert card.count("<li ") < 6 and "Also: " in card and "They&#x27;ll send you money to buy things" in card
+    js = c.get("/review/assets/review.js")
+    assert js.status_code == 200 and "javascript" in js.headers["content-type"] and "keydown" in js.text
+    assert 'class="mnav"' in html and 'id="kb-hint"' in html
+    t = c.get("/review/trends?month=" + dt.date.today().strftime("%Y-%m")).text
+    assert 'id="report-doc"' in t and "<h2>Florida State University: job-scam trends" in t and "**" not in t and "##" not in t
+    assert 'data-copy="report-doc"' in t
+    nxt = (dt.date.today().replace(day=1) + dt.timedelta(days=32)).strftime("%Y-%m")
+    assert f"month={nxt}" not in t                                                       # no link to the future
+
+
+def test_decided_cards_and_home_show_what_confirmations_did(_isolated_store, capsys):
+    from scam_detector import counts, memory
+    st = _isolated_store
+    pw = _account(capsys)
+    rid = st.add_report(make_report(SCAM, school="fsu"))
+    c = _client()
+    _login(c, "jdoe@fsu.edu", pw)
+    c.post("/review/decide", data={"csrf": _csrf(c.get("/review/queue").text), "id": rid, "action": "scam"})
+    assert "You've confirmed 1 scam" in c.get("/review").text
+    key = memory.text_key(st.get_report(rid)["text_masked"])
+    for _ in range(3):
+        counts.record_hit(key, st)
+    counts.flush(st)
+    assert "Since it was confirmed, this script has flagged 3 later checks." in c.get("/review/queue?tab=decided").text
+    assert "flagged <b>3</b> later checks, 3 of them this month" in c.get("/review").text
