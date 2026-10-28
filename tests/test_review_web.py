@@ -1,23 +1,32 @@
-"""The review page (scam_detector/review_web.py): accounts from the CLI only, school-scoped queues, decisions that become
-training labels exactly like tools/review_queue.py, CSRF on every form, and no scripts on any page."""
+"""The review page (scam_detector/review_web.py): accounts from the CLI only, school-scoped queues ordered by urgency and
+risk, decisions that become training labels exactly like tools/review_queue.py, cross-school evidence, the school's own
+domain lists, CSRF on every form, and no scripts on any page."""
 
+import datetime as dt
 import re
 
 import pytest
 
-from scam_detector import review_web
+from scam_detector import guardrails, review_web
 from scam_detector.reports import make_report
 from scam_detector.tools import reviewers as cli
 
 SCAM = ("Hello student, our department needs a remote assistant. $450 weekly. We will mail you a check to buy office "
         "equipment from our vendor and you send the rest back by Zelle. Text me at 850-555-0142.")
 REAL = "Campus library assistant, $13/hour, 10 hours a week, apply through the career center portal."
+FEE = "Data entry clerk, $35/hr, a training fee of $60 is required before you start. Visit https://fast-campus-jobs.net"
 
 
 @pytest.fixture(autouse=True)
 def _env(monkeypatch):
     monkeypatch.setenv("REVIEW_COOKIE_SECURE", "0")
     review_web.login_limiter._hits.clear()
+    guardrails.clear_cache()
+    from scam_detector import counts
+    counts._pending.clear()
+    counts._hits.clear()
+    yield
+    guardrails.clear_cache()
 
 
 def _client():
@@ -26,8 +35,8 @@ def _client():
     return TestClient(api.app, follow_redirects=False)
 
 
-def _account(capsys, email="jdoe@fsu.edu", name="J. Doe", school="fsu"):
-    assert cli.main(["add", "--email", email, "--name", name, "--school", school]) == 0
+def _account(capsys, email="jdoe@fsu.edu", name="J. Doe", school="fsu", role="reviewer", title=""):
+    assert cli.main(["add", "--email", email, "--name", name, "--school", school, "--role", role, "--title", title]) == 0
     return re.search(r"shown once\): (\S+)", capsys.readouterr().out).group(1)
 
 
@@ -39,68 +48,122 @@ def _csrf(page: str) -> str:
     return re.search(r'name="csrf" value="([0-9a-f]+)"', page).group(1)
 
 
-def test_login_queue_and_a_scam_decision(_isolated_store, capsys):
+def test_login_queue_order_and_a_scam_decision(_isolated_store, capsys):
     st = _isolated_store
     pw = _account(capsys)
-    st.add_report(make_report(SCAM, school="fsu", outcome="deposited_check"))
-    st.add_report(make_report(REAL, school="fsu", kind="borderline"))
-    st.add_report(make_report(SCAM.replace("Zelle", "Venmo"), school="ucf"))     # another school's report
+    st.add_report(make_report(REAL, school="fsu", kind="borderline"))                    # 0: low risk, close call
+    st.add_report(make_report(FEE, school="fsu"))                                         # 1: medium risk
+    st.add_report(make_report(SCAM, school="fsu", outcome="deposited_check"))            # 2: student already acted
+    st.add_report(make_report(SCAM.replace("department", "Kestrelwood department"), school="ucf"))              # 3: another school's report
     c = _client()
     assert c.get("/review").headers["location"] == "/review/login"
     assert _login(c, "jdoe@fsu.edu", "wrong password here").status_code == 401
     r = _login(c, "JDoe@FSU.edu ", pw)
     assert r.status_code == 303 and "lc_review" in r.headers["set-cookie"] and "HttpOnly" in r.headers["set-cookie"]
-    page = c.get("/review")
+    home = c.get("/review")
+    assert home.status_code == 200 and "Hi J." in home.text and "students who sent money or details" in home.text
+    page = c.get("/review/queue")
     html = page.text
-    assert page.status_code == 200 and "script-src" not in page.headers["content-security-policy"]
-    assert "<script" not in html and "default-src 'none'" in page.headers["content-security-policy"]
-    assert "2 waiting" in html and "Venmo" not in html                       # school-scoped
+    csp = page.headers["content-security-policy"]
+    assert "default-src 'none'" in csp and "script-src 'self';" in csp                      # this site's own file only
+    assert re.findall(r"<script[^>]*>", html) == ['<script src="/review/assets/review.js" defer>']  # nothing inline
+    assert "<b>3</b>Waiting" in html and "Kestrelwood" not in html                           # school-scoped
+    assert "850-555-0142" not in html                                                  # masked before it was stored
+    order = [int(x) for x in re.findall(r"Report #(\d+)", html)]
+    assert order == [3, 2, 1]                                                          # acted first, then riskiest; shown counting from 1
     assert "Student already deposited a check" in html and "Close call" in html
-    assert "850-555-0142" not in html                                       # masked before it was stored
-    assert html.index("deposited a check") < html.index("Close call")       # students who acted come first
-    assert "Detector today" in html
+    assert 'class="gauge z3"' in html and "Risk " in html and "They'll send you money" in html.replace("&#x27;", "'")
+    assert c.get("/review/queue?tab=acted").text.count("Report #") == 1
+    assert c.get("/review/queue?tab=close").text.count("Report #") == 1
     # the reviewer's name comes from the account, not the form
-    r = c.post("/review/decide", data={"csrf": _csrf(html), "id": "0", "action": "scam", "reviewer": "Mallory", "note": "check scam"})
+    r = c.post("/review/decide", data={"csrf": _csrf(html), "id": "2", "action": "scam", "reviewer": "Mallory", "note": "check scam"})
     assert r.status_code == 303 and "done=scam" in r.headers["location"]
-    rec = st.get_report("0")
+    rec = st.get_report("2")
     assert rec["status"] == "confirmed" and rec["reviewer"] == "J. Doe" and rec["note"] == "check scam"
     assert [(l["label"], l["source"]) for l in st.labels()] == [("scam", "report")]
-    assert st.templates()                                                   # template memory, via after_decision
-    assert c.post("/review/decide", data={"csrf": _csrf(html), "id": "0", "action": "real"}).status_code == 409
-    assert c.post("/review/decide", data={"csrf": _csrf(html), "id": "2", "action": "scam"}).status_code == 404
-    assert st.get_report("2")["status"] == "reported"
-    decided = c.get("/review?show=decided").text
-    assert "check scam" in decided and "Scam · J. Doe" in decided
+    assert st.templates()                                                              # template memory, via after_decision
+    assert "Any student who checks a copy of this message is now warned" in c.get(r.headers["location"]).text
+    assert c.post("/review/decide", data={"csrf": _csrf(html), "id": "2", "action": "real"}).status_code == 409
+    assert c.post("/review/decide", data={"csrf": _csrf(html), "id": "3", "action": "scam"}).status_code == 404
+    assert st.get_report("3")["status"] == "reported"
+    decided = c.get("/review/queue?tab=decided").text
+    assert "check scam" in decided and 'class="d-v v-scam">Scam</span>' in decided and "J. Doe · " in decided
+    assert '<article class="card done"' in decided and "<details>" in decided                # one row each, opens to the card
+    assert "Latest decisions" in c.get("/review").text
 
 
-def test_real_unclear_and_csrf(_isolated_store, capsys):
+def test_cross_school_evidence_shows_on_the_card(_isolated_store, capsys):
     st = _isolated_store
     pw = _account(capsys)
-    for t in (REAL, REAL + " Ref 2.", SCAM):
+    other = st.add_report(make_report("Start today, details at https://fast-campus-jobs.net and pay the fee.", school="ucf"))
+    st.decide_report(other, "confirmed", "UCF reviewer")
+    st.add_report(make_report(FEE, school="fsu"))
+    c = _client()
+    _login(c, "jdoe@fsu.edu", pw)
+    html = c.get("/review/queue").text
+    assert "Confirmed as a scam at 1 school before" in html                          # the stamp in the card header
+    assert "fast-campus-jobs.net was confirmed as a scam in 1 earlier report at 1 school" in html
+
+
+def test_real_aggregator_unclear_and_csrf(_isolated_store, capsys):
+    st = _isolated_store
+    pw = _account(capsys)
+    for t in (REAL, REAL + " Ref 2.", SCAM, FEE):
         st.add_report(make_report(t, school="fsu", kind="borderline"))
     c = _client()
     _login(c, "jdoe@fsu.edu", pw)
-    token = _csrf(c.get("/review").text)
+    html = c.get("/review/queue").text
+    assert "btn primary" not in html                                                  # close calls: no answer pre-selected
+    token = _csrf(html)
     assert c.post("/review/decide", data={"id": "0", "action": "real"}).status_code == 403      # no CSRF token
     assert c.post("/review/decide", data={"csrf": "0" * 64, "id": "0", "action": "real"}).status_code == 403
     assert st.get_report("0")["status"] == "reported"
     c.post("/review/decide", data={"csrf": token, "id": "0", "action": "real"})
     c.post("/review/decide", data={"csrf": token, "id": "1", "action": "unclear"})
-    assert [(l["label"], l["source"]) for l in st.labels()] == [("legit", "borderline_real")]
-    assert st.get_report("1")["status"] == "dismissed"
+    c.post("/review/decide", data={"csrf": token, "id": "3", "action": "aggregator", "note": "lead-gen funnel"})
+    assert [(l["label"], l["source"]) for l in st.labels()] == [("legit", "borderline_real")]   # aggregator: no label
+    assert st.get_report("3")["status"] == "dismissed" and st.get_report("3")["note"] == "[aggregator] lead-gen funnel"
+    decided = c.get("/review/queue?tab=decided").text
+    assert 'v-reposting">Reposting site<' in decided and "Note: lead-gen funnel" in decided and "[aggregator]" not in decided
+    assert st.get_report("1")["note"] == "[unclear]" and 'v-not">Not enough to tell<' in decided and "[unclear]" not in decided
+    assert 'v-real">Real job<' in decided and "Dismissed" not in decided
 
 
 def test_operator_sees_every_school_and_trends(_isolated_store, capsys):
     st = _isolated_store
     pw = _account(capsys, "evan@example.com", "Evan", "")
     st.add_report(make_report(SCAM, school="fsu"))
-    st.add_report(make_report(SCAM.replace("Zelle", "Venmo"), school="ucf"))
+    st.add_report(make_report(SCAM.replace("department", "Kestrelwood department"), school="ucf"))
     c = _client()
     _login(c, "evan@example.com", pw)
-    html = c.get("/review").text
-    assert "2 waiting" in html and "Venmo" in html and "Florida State University" in html
+    html = c.get("/review/queue").text
+    assert "<b>2</b>Waiting" in html and "Kestrelwood" in html and "Florida State University" in html
+    assert c.get("/review").status_code == 200
     t = c.get("/review/trends?school=fsu&month=2026-10")
     assert t.status_code == 200 and "job-scam trends, October 2026" in t.text
+
+
+def test_school_settings(_isolated_store, capsys):
+    st = _isolated_store
+    pw = _account(capsys)
+    c = _client()
+    _login(c, "jdoe@fsu.edu", pw)
+    token = _csrf(c.get("/review/settings").text)
+    r = c.post("/review/settings", data={"csrf": token, "op": "add", "kind": "blocked_domain",
+                                         "value": "https://Fast-Campus-Jobs.net/apply", "reason": "Oct wave", "school": "ucf"})
+    assert "fast-campus-jobs.net is now blocked" in r.text
+    assert [x["value"] for x in st.school_rules("fsu")] == ["fast-campus-jobs.net"] and st.school_rules("ucf") == []
+    assert st.school_rules("fsu")[0]["added_by"] == "J. Doe"
+    # the API applies it on the next check
+    out = c.post("/analyze", json={"description": "Quick job, details at fast-campus-jobs.net", "school": "fsu",
+                                   "run_network": False}).json()
+    assert any(f["rule_id"] == "school_blocked_domain" for f in out["findings"])
+    st.add_report(make_report("Details at https://fast-campus-jobs.net/apply", school="fsu"))
+    assert "A domain your career center has blocked" in c.get("/review/queue").text
+    assert "isn" in c.post("/review/settings", data={"csrf": token, "op": "add", "kind": "trusted_domain", "value": "not a domain"}).text
+    assert c.post("/review/settings", data={"op": "add", "kind": "trusted_domain", "value": "x.com"}).status_code == 403
+    r = c.post("/review/settings", data={"csrf": token, "op": "remove", "kind": "blocked_domain", "value": "fast-campus-jobs.net"})
+    assert "Removed fast-campus-jobs.net" in r.text and st.school_rules("fsu") == []
 
 
 def test_password_change_and_disable(_isolated_store, capsys):
@@ -137,3 +200,158 @@ def test_cli_and_login_rate_limit(_isolated_store, capsys):
     c = _client()
     codes = [_login(c, "jdoe@fsu.edu", "wrong password %d" % i).status_code for i in range(11)]
     assert codes[:10] == [401] * 10 and codes[10] == 429
+
+
+def test_aggregator_signals_from_the_reports_own_link(_isolated_store, capsys):
+    st = _isolated_store
+    pw = _account(capsys)
+    st.add_report(make_report("Sales Lead Specialist. Create a free profile to see the employer. Apply on our partner site: "
+                              "https://example.com/jobmatch/signup?ref=track123&utm_source=feed", school="fsu"))
+    st.add_report(make_report(REAL + " https://ymca.org/careers", school="fsu"))
+    c = _client()
+    _login(c, "jdoe@fsu.edu", pw)
+    html = c.get("/review/queue").text
+    assert html.count("Looks like a reposting site, not the employer") == 1 and "The apply link forces an account signup" in html
+    card = html[html.index('id="r-0"'):html.index('id="r-1"')]
+    assert "<q>https://example.com/jobmatch/signup?ref=track123&amp;utm_source=feed</q>" in card        # the student's link
+    assert "forces account creation" not in card                                         # not the rule's own wording
+    assert 'class="btn primary" name="action" value="aggregator"' in card                 # leans aggregator, not real
+
+
+def test_evidence_first_card_and_undo(_isolated_store, capsys):
+    st = _isolated_store
+    pw = _account(capsys)
+    st.add_report(make_report(SCAM, school="fsu"))                                         # 0: high risk
+    st.add_report(make_report(REAL, school="fsu"))                                         # 1: low risk
+    c = _client()
+    _login(c, "jdoe@fsu.edu", pw)
+    html = c.get("/review/queue").text
+    card0 = html[html.index('id="r-0"'):html.index('id="r-1"')]
+    card1 = html[html.index('id="r-1"'):]
+    assert "<mark>mail you a check" in card0                                              # matched phrases marked in place
+    assert card0.index('class="text"') < card0.index('class="flags"') < card0.index('class="decide"')
+    assert '<h3 class="c-title">Our department needs a remote assistant.</h3>' in card0  # headline, greeting dropped
+    assert 'class="pill' not in card0 and card0.count('class="gauge') == 1                # one encoding of the risk
+    assert 'class="btn primary" name="action" value="scam"' in card0                       # leans scam
+    assert 'class="btn primary" name="action" value="real"' in card1                       # leans real
+    token = _csrf(html)
+    r = c.post("/review/decide", data={"csrf": token, "id": "0", "action": "scam", "tab": "waiting"})
+    assert r.headers["location"].endswith("&at=1#decided")                                 # back to where they were
+    page = c.get(r.headers["location"]).text
+    assert page.index('id="decided"') < page.index('id="r-1"') and "Undo" in page
+    assert st.labels() and st.templates()
+    r = c.post("/review/undo", data={"csrf": token, "id": "0", "tab": "waiting"})
+    assert r.status_code == 303 and "done=undone" in r.headers["location"]
+    rec = st.get_report("0")
+    assert rec["status"] == "reported" and "reviewer" not in rec and st.labels() == []
+    assert "is back in the queue" in c.get(r.headers["location"]).text
+    # someone else, or too late, can't undo
+    c.post("/review/decide", data={"csrf": token, "id": "0", "action": "real", "tab": "waiting"})
+    pw2 = _account(capsys, "other@fsu.edu", "Other Reviewer", "fsu")
+    o = _client()
+    _login(o, "other@fsu.edu", pw2)
+    assert o.post("/review/undo", data={"csrf": _csrf(o.get("/review").text), "id": "0"}).status_code == 409
+    with pytest.raises(ValueError):
+        st.undo_decision("0", "J. Doe", -1)                                                # window passed
+
+
+def test_overlapping_flags_merge_and_trends_document(_isolated_store, capsys):
+    st = _isolated_store
+    pw = _account(capsys)
+    st.add_report(make_report(SCAM, school="fsu"))
+    c = _client()
+    _login(c, "jdoe@fsu.edu", pw)
+    html = c.get("/review/queue").text
+    card = html[html.index('id="r-0"'):]
+    # "mail you a check to buy office equipment", "mail you a check" and "check to buy" are one line now
+    assert card.count("<li ") < 6 and "Also: " in card and "They&#x27;ll send you money to buy things" in card
+    js = c.get("/review/assets/review.js")
+    assert js.status_code == 200 and "javascript" in js.headers["content-type"] and "keydown" in js.text
+    assert 'class="mnav"' in html and 'id="kb-hint"' in html
+    t = c.get("/review/trends?month=" + dt.date.today().strftime("%Y-%m")).text
+    assert 'id="report-doc"' in t and "<h2>Florida State University: job-scam trends" in t and "**" not in t and "##" not in t
+    assert 'data-copy="report-doc"' in t
+    nxt = (dt.date.today().replace(day=1) + dt.timedelta(days=32)).strftime("%Y-%m")
+    assert f"month={nxt}" not in t                                                       # no link to the future
+
+
+def test_decided_cards_and_home_show_what_confirmations_did(_isolated_store, capsys):
+    from scam_detector import counts, memory
+    st = _isolated_store
+    pw = _account(capsys)
+    rid = st.add_report(make_report(SCAM, school="fsu"))
+    c = _client()
+    _login(c, "jdoe@fsu.edu", pw)
+    c.post("/review/decide", data={"csrf": _csrf(c.get("/review/queue").text), "id": rid, "action": "scam"})
+    assert "You've confirmed 1 scam" in c.get("/review").text
+    key = memory.text_key(st.get_report(rid)["text_masked"])
+    for _ in range(3):
+        counts.record_hit(key, st)
+    counts.flush(st)
+    assert "Since it was confirmed, this script has flagged 3 later checks." in c.get("/review/queue?tab=decided").text
+    home = c.get("/review").text
+    assert "flagged <b>3</b> later checks this month." in home
+    assert "Too early for a rate." in home and 'class="bar"' not in home              # 1 confirmed scam: no percentage
+
+
+def test_rules_and_model_disagreeing_is_stated_and_not_preselected():
+    from scam_detector import review_web as rw
+    r = {"id": "9", "text_masked": "Research assistant, remote, $400 a week.", "school": "fsu"}
+    who = {"school": "fsu", "name": "J. Doe"}
+    a = {"score": 18, "band": "caution", "flags": [], "lead_gen": {}, "network": [], "model": {"probability": 0.94},
+         "disagree": True}
+    html = rw._card(r, a, who, "t" * 64)
+    assert "LureCheck&#x27;s two checks disagree." in html and "Wording compared with known scams: 94% likely a scam" in html
+    assert "btn primary" not in html and html.count("Wording compared") == 1 and "model" not in html.lower()
+    html = rw._card(dict(r, kind="borderline"), a, who, "t" * 64)
+    assert "Close call, and LureCheck&#x27;s two checks disagree." in html and "tag close" not in html
+    a.update(disagree=False, model={"probability": 0.1})
+    html = rw._card(r, a, who, "t" * 64)
+    assert "disagree" not in html and 'class="btn primary" name="action" value="real"' in html
+
+
+def _temp(page: str) -> str:
+    return re.search(r'<p class="pw"><code>([^<]+)</code>', page).group(1)
+
+
+def test_team_page_for_admins(_isolated_store, capsys):
+    st = _isolated_store
+    pw = _account(capsys, "boss@fsu.edu", "Maria Rivera", "fsu", role="admin", title="Assistant Director, Career Center")
+    pw2 = _account(capsys)                                                                 # J. Doe, a reviewer
+    st.add_reviewer("x@ucf.edu", "Other School", "ucf", "x")                              # another school's account
+    c = _client()
+    _login(c, "boss@fsu.edu", pw)
+    home = c.get("/review").text
+    assert "<b>Maria Rivera</b><small>Assistant Director, Career Center</small>" in home and 'href="/review/team"' in home
+    page = c.get("/review/team").text
+    assert "J. Doe" in page and "Other School" not in page                                # own school only
+    token = _csrf(page)
+    page = c.post("/review/team", data={"csrf": token, "op": "add", "name": "James Okafor", "email": "JOkafor@fsu.edu",
+                                        "title": "Career Advisor", "role": "reviewer"}).text
+    temp = _temp(page)
+    rec = st.reviewer_by_email("jokafor@fsu.edu")
+    assert rec["school"] == "fsu" and rec["role"] == "reviewer" and rec["title"] == "Career Advisor"
+    assert _login(_client(), "jokafor@fsu.edu", temp).status_code == 303                 # the shown password works
+    assert c.post("/review/team", data={"csrf": token, "op": "add", "name": "Again", "email": "jokafor@fsu.edu"}).status_code == 400
+    # turn off signs them out everywhere; can't touch another school or yourself
+    j = _client()
+    _login(j, "jdoe@fsu.edu", pw2)
+    assert c.post("/review/team", data={"csrf": token, "op": "disable", "email": "jdoe@fsu.edu"}).status_code == 200
+    assert j.get("/review").status_code == 303 and _login(_client(), "jdoe@fsu.edu", pw2).status_code == 401
+    assert c.post("/review/team", data={"csrf": token, "op": "disable", "email": "x@ucf.edu"}).status_code == 404
+    assert c.post("/review/team", data={"csrf": token, "op": "role", "email": "boss@fsu.edu"}).status_code == 400
+    assert c.post("/review/team", data={"csrf": "0" * 64, "op": "enable", "email": "jdoe@fsu.edu"}).status_code == 403
+    c.post("/review/team", data={"csrf": token, "op": "role", "email": "jokafor@fsu.edu"})
+    assert st.reviewer_by_email("jokafor@fsu.edu")["role"] == "admin"
+    new = _temp(c.post("/review/team", data={"csrf": token, "op": "reset", "email": "jokafor@fsu.edu"}).text)
+    assert new != temp and _login(_client(), "jokafor@fsu.edu", new).status_code == 303
+
+
+def test_reviewers_cannot_manage_the_team(_isolated_store, capsys):
+    pw = _account(capsys)
+    c = _client()
+    _login(c, "jdoe@fsu.edu", pw)
+    home = c.get("/review").text
+    assert 'href="/review/team"' not in home and "<small>Career center staff</small>" in home
+    assert c.get("/review/team").status_code == 403
+    assert c.post("/review/team", data={"csrf": _csrf(home), "op": "add", "name": "X", "email": "x@fsu.edu"}).status_code == 403

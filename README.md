@@ -111,10 +111,14 @@ production.
   own and the scripts it still misses, how scammers made contact, confirmed domains and how many schools saw them, what
   students told the follow-up happened, and what the detector learned. Markdown, ready to forward; `--json` for a
   dashboard. Counts only reviewer-confirmed scams and names no student.
-- The review page (`/review`, `scam_detector/review_web.py`, migration 006) is where career-center staff decide reports
-  in a browser: the queue for their school (students who already acted first, close calls marked, what today's detector
-  says), three buttons (it's a scam / it's a real job / not enough to tell), the last 50 decisions, and the monthly
-  trends report. Decisions go through the same path as `review_queue`, so labels and template memory follow. Accounts
+- The review page (`/review`, `scam_detector/review_web.py`, migration 006) is where career-center staff work in a
+  browser. Home shows what needs them (waiting, students who already acted, close calls) and the month's numbers
+  (scams confirmed, how many today's detector catches on its own, scheme types). The queue has tabs (waiting, acted,
+  close calls, decided), puts students who already acted first and then the riskiest, and each card shows a 0-100 risk
+  gauge, every red flag with its explanation, aggregator signals, the school's own blocks, and cross-school evidence
+  (links and contacts other schools' reviewers confirmed, scam scripts it matches). Buttons: it's a scam / it's a real
+  job / aggregator (no training label) / not enough to tell. School settings edits the trusted and blocked domains;
+  trends shows the monthly report. Decisions go through the same path as `review_queue`, so labels and template memory follow. Accounts
   are made only from the command line: `python -m scam_detector.tools.reviewers add --email ... --name ... --school fsu`
   prints a temporary password once (`--school ""` sees every school); `list`, `reset`, `disable`, `enable`. Sessions are
   HttpOnly, SameSite=Strict cookies stored as hashes; forms carry CSRF tokens; pages allow no scripts. Set
