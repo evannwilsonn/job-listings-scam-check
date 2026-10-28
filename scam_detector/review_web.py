@@ -164,7 +164,7 @@ header{background:var(--navy);color:#E8ECF4;padding:0 16px}
 .mark{width:22px;height:22px}
 nav.main{display:flex;gap:4px;flex-wrap:wrap;flex:1}
 nav.main a{color:#C9D2E3;text-decoration:none;padding:6px 10px;border-radius:7px;font-weight:600;font-size:14px}
-nav.main a:hover{background:#ffffff12;color:#fff}nav.main a.on{background:#ffffff1a;color:#fff}
+nav.main a.on{background:#ffffff1a;color:#fff}
 .me{display:flex;align-items:center;gap:10px;font-size:13px;color:#C9D2E3}
 .me form{margin:0}.me button{background:none;border:1px solid #ffffff3a;color:#fff;border-radius:7px;padding:5px 10px;font:600 13px var(--sans);cursor:pointer}
 main{max-width:1040px;margin:0 auto;padding:22px 16px 48px}
@@ -222,6 +222,31 @@ table.rules th{font:600 11px var(--mono);letter-spacing:.08em;text-transform:upp
 .report{white-space:pre-wrap;font:13px/1.6 var(--mono)}
 .empty{color:var(--soft);text-align:center;padding:28px 16px}
 select{font:inherit}
+/* Interaction: crisp and fast for a tool used every day. Presses answer at once, hovers only where a mouse exists,
+   nothing animates that staff see dozens of times a day except the press itself. */
+:root{--ease-out:cubic-bezier(.23,1,.32,1);--ease-in-out:cubic-bezier(.77,0,.175,1);
+--shadow:0 1px 1px rgb(11 20 36/.03),0 2px 8px -3px rgb(11 20 36/.08);--ring:0 0 0 3px rgb(201 155 69/.32)}
+body{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+::selection{background:#F3E3BC;color:var(--ink)}
+.card,.stat{border-color:#E7E5DF;box-shadow:var(--shadow)}
+.stat b,.tabs a b,.g-num,.r-id,.pill,.list b{font-variant-numeric:tabular-nums}
+.btn,.me button,nav.main a,.tabs a,a.stat{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.btn,.me button{transition:transform 160ms var(--ease-out),background-color 150ms ease,border-color 150ms ease}
+.btn:active,.me button:active{transform:scale(.97)}
+a.stat{transition:transform 160ms var(--ease-out),border-color 150ms ease}a.stat:active{transform:scale(.985)}
+nav.main a,.tabs a{transition:background-color 150ms ease,color 150ms ease}
+input,select{transition:border-color 150ms ease,box-shadow 150ms ease}
+input:focus,select:focus{outline:none;border-color:var(--gold);box-shadow:var(--ring)}
+a:focus-visible,.btn:focus-visible,.me button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+@media (hover:hover) and (pointer:fine){
+nav.main a:hover{background:#ffffff12;color:#fff}.tabs a:hover{color:var(--ink)}
+.btn.scam:hover{background:#BC2A31}.btn.real:hover{background:#278A5F}.btn.agg:hover{background:#F3F7FD;border-color:#9FB4D9}
+.btn.skip:hover{background:#F7F7F4;border-color:#C4C0B4}.btn.dark:hover{background:var(--navy2)}.me button:hover{border-color:#ffffff70}
+a.stat:hover{border-color:var(--line2)}}
+.flash,.err{transition:opacity 220ms var(--ease-out),transform 220ms var(--ease-out)}
+@starting-style{.flash,.err{opacity:0;transform:translateY(-4px)}}
+@media (prefers-reduced-motion:reduce){.btn:active,.me button:active,a.stat:active{transform:none}
+@starting-style{.flash,.err{transform:none}}}
 """
 MARK = ('<svg class="mark" viewBox="0 0 40 40" aria-hidden="true"><path d="M20 3 L34 8 V19 C34 28 28 34 20 37 C12 34 6 28 6 19 V8 Z" '
         'fill="#13213A" stroke="#E2BE6A" stroke-width="2"/><path d="M20 11 L22.4 17.6 L29 20 L22.4 22.4 L20 29 L17.6 22.4 L11 20 '
