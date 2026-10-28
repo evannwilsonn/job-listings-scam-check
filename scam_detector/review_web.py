@@ -42,8 +42,10 @@ HARM = {"sent_money": "sent money", "deposited_check": "deposited a check", "sha
         "shared_personal_info": "shared personal information", "shared_login": "shared a login",
         "gift_cards": "bought gift cards", "crypto": "sent crypto", "shipped_packages": "shipped packages",
         "installed_software": "installed software"}
-BAND = {"block": "likely scam", "review": "needs a person", "caution": "be careful", "clear": "nothing found"}
+BAND = {"block": "likely scam", "review": "needs a person", "caution": "be careful", "clear": "no scam signs"}
 TAG_AGGREGATOR = "[aggregator]"
+TAG_UNCLEAR = "[unclear]"
+MIN_RATE = 10                                         # below this many confirmed scams a percentage means little
 _URL = re.compile(r"https?://[^\s<>\"')\]]+", re.I)
 FONTS = ("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,500..700,0..100"
          "&family=Martian+Mono:wdth,wght@75..100,400..600&family=Plus+Jakarta+Sans:wght@400..700&display=swap")
@@ -131,8 +133,13 @@ def assess(r: dict, st) -> dict:
         look = None
     score = min(100, sum(f.get("weight", 0) for f in flags))
     band, _ = _band(score, any(f.get("severity") == "critical" for f in flags))
+    model = (look or {}).get("model")
+    p = model["probability"] if model else None
+    # A wide gap between the rule score and the trained model is the case a person should read most carefully,
+    # and the one where pre-selecting an answer would bias the label.
+    disagree = p is not None and ((p >= 0.8 and score < 50) or (p <= 0.2 and score >= 75))
     out.update({"score": score, "band": band, "flags": flags, "lead_gen": res.lead_gen or {}, "network": matches,
-                "template": tm, "model": (look or {}).get("model")})
+                "template": tm, "model": model, "disagree": disagree})
     return out
 
 
@@ -228,7 +235,7 @@ def _highlight(text: str, flags: list) -> str:
 CSS = """
 :root{--paper:#F6F5F1;--card:#FFFFFF;--ink:#0B1424;--soft:#4A5568;--dim:#7A8597;--line:#E3E1DA;--line2:#D3D0C6;
 --navy:#0B1424;--navy2:#13213A;--gold:#C99B45;--gold-hi:#E2BE6A;
---g:#2F9E6E;--y:#D6981F;--o:#E2702F;--r:#D2343B;--g-t:#E5F4EC;--y-t:#FBF1DC;--o-t:#FCE9DD;--r-t:#FBE3E3;--b-t:#E8EEF8;--b:#2C5AA0;
+--g:#2F9E6E;--y:#D6981F;--o:#E2702F;--r:#D2343B;--g-t:#E5F4EC;--y-t:#FBF1DC;--o-t:#FCE9DD;--r-t:#FBE3E3;--b-t:#E8EEF8;--b:#2C5AA0;--v:#6A4C9C;--v-t:#F0EBF8;--v-l:#CDBFE6;
 --display:'Fraunces',Georgia,serif;--sans:'Plus Jakarta Sans',system-ui,-apple-system,Segoe UI,sans-serif;--mono:'Martian Mono',ui-monospace,Menlo,monospace}
 *{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
 body{margin:0;font:15px/1.55 var(--sans);background:var(--paper);color:var(--ink)}
@@ -257,7 +264,7 @@ h2{font:700 19px/1.25 var(--display);margin:0 0 10px}
 .pill{display:inline-flex;align-items:center;gap:6px;font:600 11.5px var(--mono);letter-spacing:.02em;border-radius:999px;padding:3px 10px;white-space:nowrap}
 .p0{background:var(--g-t);color:#1E7350}.p1{background:var(--y-t);color:#8A5B00}.p2{background:var(--o-t);color:#9A4310}.p3{background:var(--r-t);color:#A1222A}
 .tag{display:inline-block;font:600 12px var(--sans);border-radius:6px;padding:2px 8px;background:#EEF0F3;color:var(--soft)}
-.tag.harm{background:var(--r-t);color:#A1222A}.tag.close{background:var(--y-t);color:#8A5B00}.tag.agg{background:var(--b-t);color:var(--b)}
+.tag.harm{background:var(--r-t);color:#A1222A}.tag.close{background:var(--y-t);color:#8A5B00}.tag.agg{background:var(--v-t);color:var(--v)}
 .tags{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
 .gauge{display:flex;align-items:center;gap:8px;margin:2px 0 12px;max-width:520px}
 .g-end{font:500 11px var(--mono);color:var(--dim)}.g-num{font:700 16px var(--mono);min-width:3ch}
@@ -278,7 +285,7 @@ h2{font:700 19px/1.25 var(--display);margin:0 0 10px}
 form.decide{display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-top:1px solid var(--line);padding-top:12px;margin-top:4px}
 form.decide input[type=text]{flex:1 1 200px;min-width:0;padding:9px 11px;border:1px solid var(--line2);border-radius:8px;font:inherit;background:#fff}
 .btn{border:1px solid transparent;border-radius:8px;padding:9px 14px;font:700 14px var(--sans);cursor:pointer;background:#EEF0F3;color:var(--ink)}
-.btn.scam{background:var(--r);color:#fff}.btn.real{background:var(--g);color:#fff}.btn.agg{background:#fff;border-color:#B8C7E2;color:var(--b)}
+.btn.scam{background:var(--r);color:#fff}.btn.real{background:var(--g);color:#fff}.btn.agg{background:#fff;border-color:var(--v-l);color:var(--v)}
 .btn.skip{background:#fff;border-color:var(--line2);color:var(--soft)}.btn.dark{background:var(--navy);color:#fff}
 .flash{background:var(--g-t);border:1px solid #BFE3CF;border-radius:10px;padding:11px 14px;margin:0 0 16px}
 .err{background:var(--r-t);border:1px solid #F2C2C2;border-radius:10px;padding:11px 14px;margin:0 0 16px}
@@ -316,7 +323,7 @@ input:focus,select:focus{outline:none;border-color:var(--gold);box-shadow:var(--
 a:focus-visible,.btn:focus-visible,.me button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 @media (hover:hover) and (pointer:fine){
 nav.main a:hover{background:#ffffff12;color:#fff}.tabs a:hover{color:var(--ink)}
-.btn.scam:hover{background:#BC2A31}.btn.real:hover{background:#278A5F}.btn.agg:hover{background:#F3F7FD;border-color:#9FB4D9}
+.btn.scam:hover{background:#BC2A31}.btn.real:hover{background:#278A5F}.btn.agg:hover{background:var(--v-t)}
 .btn.skip:hover{background:#F7F7F4;border-color:#C4C0B4}.btn.dark:hover{background:var(--navy2)}.me button:hover{border-color:#ffffff70}
 a.stat:hover{border-color:var(--line2)}}
 .flash,.err{transition:opacity 220ms var(--ease-out),transform 220ms var(--ease-out)}
@@ -336,11 +343,23 @@ body{font-size:16px}h1{font-size:30px}h2{font-size:22px}
 .g-band{font-family:var(--mono);font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--soft)}
 .text mark{background:#FDE6A8;color:inherit;border-radius:3px;padding:0 2px;-webkit-box-decoration-break:clone;box-decoration-break:clone}
 .flags li{padding:3px 0 3px 11px;margin:0 0 6px}
-.flags summary{display:grid;grid-template-columns:1fr auto;column-gap:12px;cursor:pointer;list-style:none}
-.flags summary::-webkit-details-marker{display:none}
-.flags summary b{display:block;grid-column:1}.flags q{display:block;grid-column:1;color:var(--soft);font-family:var(--sans);quotes:"“" "”"}
-.why-t{grid-column:2;grid-row:1;color:var(--b);font-weight:600}.flags details[open] .why-t{color:var(--dim)}
-.flags p{margin:4px 0 2px;color:var(--soft);max-width:72ch}
+.flags q{display:block;color:var(--soft);font-family:var(--sans);quotes:"“" "”"}
+.whys{margin:-4px 0 12px}.whys summary{cursor:pointer;color:var(--b);font-weight:600;font-size:14px;width:fit-content}
+.whys[open] summary{color:var(--dim)}.whys p{margin:6px 0 0;color:var(--soft);font-size:14px;max-width:72ch}.whys p b{color:var(--ink)}
+.agg-h{margin:0 0 6px;font:600 12px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--v)}
+.agg-h span{color:var(--dim);text-transform:none;letter-spacing:0;font-family:var(--sans)}.flags.agg li{--mk:var(--v-l)}
+.split{margin:0 0 10px;padding:9px 12px;border-radius:9px;background:#EEF0F3;border-left:3px solid var(--navy);font-size:14px;color:var(--soft)}
+.split b{color:var(--ink)}
+.nw{white-space:nowrap}
+.card.done{padding:0}.card.done>details>summary{list-style:none;cursor:pointer;padding:13px 18px;display:grid;
+grid-template-columns:auto minmax(0,1fr) auto;gap:2px 12px;align-items:baseline}
+.card.done>details>summary::-webkit-details-marker{display:none}
+.d-title{font-weight:700;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.d-v{font:600 12px var(--mono);letter-spacing:.04em;text-transform:uppercase}.v-scam{color:var(--r)}.v-real{color:#1E7350}
+.v-aggregator{color:var(--v)}.v-not{color:var(--dim)}
+.d-meta{grid-column:2/4;font-size:14px;color:var(--dim)}.d-meta em{font-style:normal;color:#1E7350;font-weight:600}
+.card.done details[open]>summary{border-bottom:1px solid var(--line)}.d-body{padding:14px 18px 16px}
+.d-body .c-head{justify-content:flex-start}.d-body .c-head>div:first-child{display:none}
 .tag.seen{background:var(--b-t);color:var(--b);font-weight:700}
 .btn{display:inline-flex;align-items:center;gap:8px}.btn i{width:8px;height:8px;border-radius:50%;flex:none}
 .btn.primary{background:var(--navy);color:#fff}.btn.ghost{background:#fff;border-color:var(--line2);color:var(--ink)}
@@ -375,9 +394,12 @@ background:var(--navy2);border:1px solid #ffffff22;border-radius:12px;padding:8p
 .mnav-body a.on{background:#ffffff1a}.mnav-body .me{flex-direction:column;align-items:flex-start;gap:8px;padding:10px;border-top:1px solid #ffffff1a;margin-top:4px}
 .tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}.tabs::-webkit-scrollbar{display:none}
 .tabs a{white-space:nowrap;padding:10px 12px 9px}
-.doc{padding:18px}.kb,#kb-help{display:none}}
+.doc{padding:18px}.kb,#kb-help{display:none}
+.grid{grid-template-columns:1fr 1fr;gap:10px}.stat{padding:12px 14px}.stat b{font-size:24px}
+.card.done>details>summary{grid-template-columns:auto minmax(0,1fr);padding:12px 14px}.d-v{grid-column:2;grid-row:2}
+.d-meta{grid-column:2}.d-body{padding:12px 14px 14px}}
 @media (hover:hover) and (pointer:fine){.btn.primary:hover{background:var(--navy2)}.btn.ghost:hover{background:#F7F7F4;border-color:#C4C0B4}
-.flags summary:hover b{text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:3px}}
+.whys summary:hover,.card.done>details>summary:hover .d-title{text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:3px}}
 """
 MARK = ('<svg class="mark" viewBox="0 0 40 40" aria-hidden="true"><path d="M20 3 L34 8 V19 C34 28 28 34 20 37 C12 34 6 28 6 19 V8 Z" '
         'fill="#13213A" stroke="#E2BE6A" stroke-width="2"/><path d="M20 11 L22.4 17.6 L29 20 L22.4 22.4 L20 29 L17.6 22.4 L11 20 '
@@ -532,12 +554,30 @@ def _network_why(a: dict) -> str:
     return " ".join(bits)
 
 
-DOT = {"scam": "var(--r)", "real": "var(--g)", "aggregator": "var(--b)", "unclear": "var(--dim)"}
+DOT = {"scam": "var(--r)", "real": "var(--g)", "aggregator": "var(--v)", "unclear": "var(--dim)"}
 
 
-def _buttons(a: dict) -> str:
-    """The likely answer is the primary button: scam when the detector leans that way, real job when it doesn't."""
-    lean = "scam" if a["band"] in ("block", "review") or a["network"] else "real"
+def _verdict(r: dict) -> str:
+    note = r.get("note") or ""
+    if r.get("status") == "confirmed":
+        return "Scam"
+    if note.startswith(TAG_AGGREGATOR):
+        return "Aggregator"
+    if note.startswith(TAG_UNCLEAR):
+        return "Not enough to tell"
+    return "Real job" if r.get("status") == "dismissed" else r.get("status", "")
+
+
+def _pct(p: float) -> str:
+    pct = p * 100
+    return "over 99%" if pct >= 99.5 else f"{round(pct)}%"
+
+
+def _buttons(a: dict, neutral: bool = False) -> str:
+    """The likely answer is the primary button: scam when the detector leans that way, real job when it doesn't.
+    No answer is pre-selected on close calls or when the rules and the model disagree: the reviewer's call there is
+    the label, and an emphasised button would pull it toward the rules."""
+    lean = None if neutral else "scam" if a["band"] in ("block", "review") or a["network"] else "real"
     labels = [("scam", "It's a scam"), ("real", "It's a real job"), ("aggregator", "Aggregator"), ("unclear", "Not enough to tell")]
     return "".join(f'<button class="btn {"primary" if k == lean else "ghost"}" name="action" value="{k}">'
                    f'<i style="background:{DOT[k]}"></i>{t}</button>' for k, t in labels)
@@ -558,15 +598,13 @@ def _card(r: dict, a: dict, who: dict, token: str, tab: str = "waiting", impact:
         tags.append('<span class="tag close">Close call: the detector asked for a person</span>')
     if lg.get("flag"):
         tags.append('<span class="tag agg">Looks like an aggregator or lead-gen page</span>')
-    if decided:
-        note = r.get("note") or ""
-        label = ("Aggregator" if note.startswith(TAG_AGGREGATOR) else
-                 {"confirmed": "Scam", "dismissed": "Dismissed"}.get(r.get("status"), r.get("status", "")))
-        tags.append(f'<span class="tag">{e(label)} · {e(r.get("reviewer", ""))} · {e(_day(r.get("reviewed_at", "")))}</span>')
     tags = "".join(t for t in tags if t)
     body = head + (f'<div class="tags">{tags}</div>' if tags else "")
+    if a.get("disagree") and a.get("model"):
+        body += (f'<p class="split"><b>The rules and the trained model disagree.</b> Rules: {a["score"]} of 100. '
+                 f'Model: {_pct(a["model"]["probability"])} likely a scam. Read this one closely.</p>')
     body += f'<div class="text">{_highlight(text, a["flags"]) if text else "(the text was removed after 30 days)"}</div>'
-    items = []
+    items, whys_all = [], []
     for group in _flag_groups(text, a["flags"]):
         lead = group[0]
         sev = "crit" if any(f.get("severity") == "critical" for f in group) else "warn"
@@ -579,17 +617,22 @@ def _card(r: dict, a: dict, who: dict, token: str, tab: str = "waiting", impact:
             whys = [(f.get("title", "") if len(group) > 1 else "", f.get("why", "")) for f in group]
         also = (f'<span class="also">Also: {" · ".join(e(f.get("title", "")) for f in group[1:])}</span>'
                 if len(group) > 1 else "")
-        body_why = "".join(f'<p>{f"<b>{e(t)}.</b> " if t else ""}{e(w)}</p>' for t, w in whys)
-        items.append(f'<li class="{sev}"><details><summary><b>{e(lead.get("title", ""))}</b>'
-                     f'{f"<q>{e(quote)}</q>" if quote else ""}{also}<span class="why-t">Why</span></summary>'
-                     f'{body_why}</details></li>')
+        whys_all += [(t or lead.get("title", ""), w) for t, w in whys if w]
+        items.append(f'<li class="{sev}"><b>{e(lead.get("title", ""))}</b>'
+                     f'{f"<q>{e(quote)}</q>" if quote else ""}{also}</li>')
+    agg = []
     for rs in (lg.get("reasons") or [])[:3]:
-        items.append(f'<li class="note"><details><summary><b>Aggregator signal</b><q>{e((rs.get("matched") or [""])[0])}</q>'
-                     f'<span class="why-t">Why</span></summary><p>{e(rs.get("reason", ""))}</p></details></li>')
+        agg.append(f'<li class="note"><q>{e((rs.get("matched") or [""])[0])}</q><span class="also">{e(rs.get("reason", ""))}</span></li>')
     if items:
         body += f'<ul class="flags">{"".join(items)}</ul>'
     elif not decided:
         body += '<p class="meta">No red flags from the rules. That alone doesn\'t make it real; read it.</p>'
+    if whys_all:
+        body += ('<details class="whys"><summary>Why these were flagged</summary>'
+                 + "".join(f'<p><b>{e(t)}.</b> {e(w)}</p>' for t, w in whys_all) + '</details>')
+    if agg:
+        body += (f'<p class="agg-h">Aggregator signs <span>· not part of the risk score</span></p>'
+                 f'<ul class="flags agg">{"".join(agg)}</ul>')
     ind = r.get("indicators") or {}
     bits = []
     if ind.get("domains"):
@@ -598,24 +641,29 @@ def _card(r: dict, a: dict, who: dict, token: str, tab: str = "waiting", impact:
         n = len(ind.get(k) or [])
         if n:
             bits.append(f"{n} {word}{'es' if word.endswith('ss') and n > 1 else 's' if n > 1 else ''} hidden")
-    if a.get("model"):
-        pct = a["model"]["probability"] * 100
-        bits.append(f"Trained model: {'over 99%' if pct >= 99.5 else f'{round(pct)}%'} likely a scam")
+    if a.get("model") and not a.get("disagree"):
+        bits.append(f"Trained model: {_pct(a['model']['probability'])} likely a scam")
     if bits:
         body += f'<p class="meta">{" · ".join(bits)}</p>'
     if decided:
-        note = (r.get("note") or "").replace(TAG_AGGREGATOR, "").strip()
+        note = (r.get("note") or "").replace(TAG_AGGREGATOR, "").replace(TAG_UNCLEAR, "").strip()
         if note:
             body += f'<p class="meta">Note: {e(note)}</p>'
         if impact:
             body += (f'<p class="impact">Since it was confirmed, this script has flagged {impact:,} later '
                      f'check{"s" if impact != 1 else ""}.</p>')
-        return f'<article class="card" id="r-{e(r["id"])}">{body}</article>'
+        v = _verdict(r)
+        hits = f' · <em>flagged {impact:,} later check{"s" if impact != 1 else ""}</em>' if impact else ""
+        row = (f'<summary class="d-row"><span class="r-id">#{e(r["id"])}</span>'
+               f'<span class="d-title">{e(_headline(text)) if text else "Text removed after 30 days"}</span>'
+               f'<span class="d-v v-{v.split()[0].lower()}">{e(v)}</span>'
+               f'<span class="d-meta">{e(r.get("reviewer", ""))} · {e(_day(r.get("reviewed_at", "")))}{hits}</span></summary>')
+        return f'<article class="card done" id="r-{e(r["id"])}"><details>{row}<div class="d-body">{body}</div></details></article>'
     body += (f'<form class="decide" method="post" action="/review/decide"><input type="hidden" name="csrf" '
              f'value="{acct.csrf_for(token)}"><input type="hidden" name="id" value="{e(r["id"])}">'
              f'<input type="hidden" name="tab" value="{e(tab)}">'
              f'<input type="text" name="note" maxlength="500" placeholder="Note (optional)" aria-label="Note">'
-             f'{_buttons(a)}</form>')
+             f'{_buttons(a, neutral=bool(a.get("disagree")) or r.get("kind") == "borderline")}</form>')
     return f'<article class="card" id="r-{e(r["id"])}">{body}</article>'
 
 
@@ -623,7 +671,7 @@ FLASH = {"scam": "Confirmed as a scam. Copies of this script are now flagged on 
                  "are shared with other LureCheck schools, and it's in the next retrain.",
          "real": "Marked as a real job. It's a 'real' example for the next retrain, so look-alikes are less likely to be flagged.",
          "aggregator": "Marked as an aggregator. It's kept out of training in both directions.",
-         "unclear": "Dismissed without a label."}
+         "unclear": "Closed as not enough to tell. Nothing is learned from it."}
 
 
 def _stub(n: str, done: str, token: str, tab: str) -> str:
@@ -675,8 +723,8 @@ def queue(request: Request, tab: str = "waiting", done: str = "", n: str = "", a
            "acted": "These students already did something. Decide these first; the student was shown what to do next.",
            "close": "The detector couldn't settle these and the student agreed to let a person look. "
                     "These teach the detector the most.",
-           "decided": f"The last {QUEUE_MAX} decisions. You can undo your own for {UNDO_SECONDS // 60} minutes; "
-                      f"after that, ask the operator."}[tab]
+           "decided": f"The last {QUEUE_MAX} decisions. Open one to see the report. You can undo your own for "
+                      f"{UNDO_SECONDS // 60} minutes; after that, ask the operator."}[tab]
     keys = ('<p class="meta kb" id="kb-hint" hidden>Keyboard: <kbd>J</kbd> <kbd>K</kbd> move · <kbd>S</kbd> scam · '
             '<kbd>R</kbd> real job · <kbd>A</kbd> aggregator · <kbd>N</kbd> not enough to tell · <kbd>U</kbd> undo · '
             '<kbd>?</kbd> all keys</p>'
@@ -726,10 +774,13 @@ def home(request: Request):
     stats = (f'<div class="grid">{tiles}<div class="stat static"><span class="kick">This month</span><b>{used["checks"]:,}</b>'
              f'<span>messages students checked, {used["flagged"]:,} flagged · {tot["confirmed"]} scams confirmed</span></div></div>')
     pct = round(tot["caught"] / tot["confirmed"] * 100) if tot["confirmed"] else 0
+    reals = f'{tot["real"]} real job{"" if tot["real"] == 1 else "s"} labeled this month, which keeps false alarms down.'
     keep = (f'<div class="card"><h2>Is the detector keeping up?</h2><p class="sub" style="margin-bottom:6px">Of this month\'s '
             f'confirmed scams, today\'s detector flags <b>{tot["caught"]} of {tot["confirmed"]}</b> on its own.</p>'
-            f'<div class="bar"><i style="width:{pct}%"></i></div><p class="meta">{pct}% · the rest are what the next '
-            f'rules and retrain learn from. {tot["real"]} real job{"" if tot["real"] == 1 else "s"} labeled this month, which keeps false alarms down.</p></div>'
+            + (f'<div class="bar"><i style="width:{pct}%"></i></div><p class="meta">{pct}% · the rest are what the next '
+               f'rules and retrain learn from. {reals}</p>' if tot["confirmed"] >= MIN_RATE else
+               f'<p class="meta">Too few to call it a rate yet; a percentage shows from {MIN_RATE} confirmed scams. {reals}</p>')
+            + '</div>'
             if tot["confirmed"] else
             '<div class="card"><h2>Is the detector keeping up?</h2><p class="sub">No confirmed scams yet this month. '
             'Once reviewers confirm some, this shows how many the detector catches on its own.</p></div>')
@@ -739,7 +790,7 @@ def home(request: Request):
              '<div class="card"><h2>What\'s hitting students</h2><p class="sub">Scheme types appear here once scams are confirmed.</p></div>')
     recent = sorted(g["decided"], key=lambda r: r.get("reviewed_at") or "", reverse=True)[:5]
     rec = "".join(f'<li><span>#{e(r["id"])} · {e(_headline(r.get("text_masked") or ""))}</span>'
-                  f'<b>{e("Scam" if r.get("status") == "confirmed" else "Aggregator" if (r.get("note") or "").startswith(TAG_AGGREGATOR) else "Dismissed")}</b></li>'
+                  f'<b>{e(_verdict(r))}</b></li>'
                   for r in recent)
     rec = f'<div class="card"><h2>Latest decisions</h2><ul class="list">{rec}</ul></div>' if rec else ""
     from . import memory
@@ -750,14 +801,14 @@ def home(request: Request):
         this = sum(counts.hits(mine, since=month + "-01", st=st).values())
         did = (f'<div class="card impact-card"><h2>What your confirmations did</h2><p class="sub" style="margin:0">'
                f'Scripts you confirmed have flagged <b>{ever:,}</b> later check{"s" if ever != 1 else ""}'
-               f'{f", {this:,} of them this month" if ever else ""}. Each one is a student who saw the warning '
-               f'before replying.</p></div>' if ever else
+               f'{" this month" if this == ever else f", {this:,} of them this month"}. Each one is a student who saw '
+               f'the warning before replying.</p></div>' if ever else
                f'<div class="card impact-card"><h2>What your confirmations did</h2><p class="sub" style="margin:0">'
                f'You\'ve confirmed {len(mine)} scam{"s" if len(mine) != 1 else ""}. When a copy reaches another student, '
                f'it\'s flagged on the spot and counted here.</p></div>')
-        rec = did + rec
+        kinds = did + kinds
     hello = who["name"].split(" ")[0] if who["name"] else ""
-    return _page("Home", f'<p class="kick">{e(_school_label(who["school"]))} · {e(_day(dt.date.today().isoformat()))}</p>'
+    return _page("Home", f'<p class="kick">{e(_school_label(who["school"]))} · <span class="nw">{e(_day(dt.date.today().isoformat()))}</span></p>'
                          f'<h1>Hi {e(hello)}.</h1><p class="sub">Here\'s what needs you and how your students are doing.</p>'
                          f'{stats}<div class="two"><div>{keep}{rec}</div><div>{kinds}</div></div>', who, token, on="home")
 
@@ -783,8 +834,8 @@ async def decide(request: Request):
     nxt = ids[ids.index(str(r["id"])) + 1] if str(r["id"]) in ids and ids.index(str(r["id"])) + 1 < len(ids) else ""
     decision, real = ("confirmed", False) if action == "scam" else ("dismissed", action == "real")
     note = f.get("note", "")[:480]
-    if action == "aggregator":
-        note = f"{TAG_AGGREGATOR} {note}".strip()
+    if action in ("aggregator", "unclear"):
+        note = f"{TAG_AGGREGATOR if action == 'aggregator' else TAG_UNCLEAR} {note}".strip()
     try:
         rec = st.decide_report(r["id"], decision, who["name"], note, real=real)
     except ValueError:

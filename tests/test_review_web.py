@@ -87,7 +87,8 @@ def test_login_queue_order_and_a_scam_decision(_isolated_store, capsys):
     assert c.post("/review/decide", data={"csrf": _csrf(html), "id": "3", "action": "scam"}).status_code == 404
     assert st.get_report("3")["status"] == "reported"
     decided = c.get("/review/queue?tab=decided").text
-    assert "check scam" in decided and "Scam · J. Doe" in decided
+    assert "check scam" in decided and 'class="d-v v-scam">Scam</span>' in decided and "J. Doe · " in decided
+    assert '<article class="card done"' in decided and "<details>" in decided                # one row each, opens to the card
     assert "Latest decisions" in c.get("/review").text
 
 
@@ -111,7 +112,9 @@ def test_real_aggregator_unclear_and_csrf(_isolated_store, capsys):
         st.add_report(make_report(t, school="fsu", kind="borderline"))
     c = _client()
     _login(c, "jdoe@fsu.edu", pw)
-    token = _csrf(c.get("/review/queue").text)
+    html = c.get("/review/queue").text
+    assert "btn primary" not in html                                                  # close calls: no answer pre-selected
+    token = _csrf(html)
     assert c.post("/review/decide", data={"id": "0", "action": "real"}).status_code == 403      # no CSRF token
     assert c.post("/review/decide", data={"csrf": "0" * 64, "id": "0", "action": "real"}).status_code == 403
     assert st.get_report("0")["status"] == "reported"
@@ -121,7 +124,9 @@ def test_real_aggregator_unclear_and_csrf(_isolated_store, capsys):
     assert [(l["label"], l["source"]) for l in st.labels()] == [("legit", "borderline_real")]   # aggregator: no label
     assert st.get_report("3")["status"] == "dismissed" and st.get_report("3")["note"] == "[aggregator] lead-gen funnel"
     decided = c.get("/review/queue?tab=decided").text
-    assert "Aggregator · J. Doe" in decided and "Note: lead-gen funnel" in decided and "[aggregator]" not in decided
+    assert 'v-aggregator">Aggregator<' in decided and "Note: lead-gen funnel" in decided and "[aggregator]" not in decided
+    assert st.get_report("1")["note"] == "[unclear]" and 'v-not">Not enough to tell<' in decided and "[unclear]" not in decided
+    assert 'v-real">Real job<' in decided and "Dismissed" not in decided
 
 
 def test_operator_sees_every_school_and_trends(_isolated_store, capsys):
@@ -280,4 +285,20 @@ def test_decided_cards_and_home_show_what_confirmations_did(_isolated_store, cap
         counts.record_hit(key, st)
     counts.flush(st)
     assert "Since it was confirmed, this script has flagged 3 later checks." in c.get("/review/queue?tab=decided").text
-    assert "flagged <b>3</b> later checks, 3 of them this month" in c.get("/review").text
+    home = c.get("/review").text
+    assert "flagged <b>3</b> later checks this month." in home
+    assert "Too few to call it a rate yet" in home and 'class="bar"' not in home              # 1 confirmed scam: no percentage
+
+
+def test_rules_and_model_disagreeing_is_stated_and_not_preselected():
+    from scam_detector import review_web as rw
+    r = {"id": "9", "text_masked": "Research assistant, remote, $400 a week.", "school": "fsu"}
+    who = {"school": "fsu", "name": "J. Doe"}
+    a = {"score": 18, "band": "caution", "flags": [], "lead_gen": {}, "network": [], "model": {"probability": 0.94},
+         "disagree": True}
+    html = rw._card(r, a, who, "t" * 64)
+    assert "The rules and the trained model disagree." in html and "Model: 94% likely a scam" in html
+    assert "btn primary" not in html and "Trained model:" not in html
+    a.update(disagree=False, model={"probability": 0.1})
+    html = rw._card(r, a, who, "t" * 64)
+    assert "disagree" not in html and 'class="btn primary" name="action" value="real"' in html
