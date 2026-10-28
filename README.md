@@ -111,6 +111,14 @@ production.
   own and the scripts it still misses, how scammers made contact, confirmed domains and how many schools saw them, what
   students told the follow-up happened, and what the detector learned. Markdown, ready to forward; `--json` for a
   dashboard. Counts only reviewer-confirmed scams and names no student.
+- The review page (`/review`, `scam_detector/review_web.py`, migration 006) is where career-center staff decide reports
+  in a browser: the queue for their school (students who already acted first, close calls marked, what today's detector
+  says), three buttons (it's a scam / it's a real job / not enough to tell), the last 50 decisions, and the monthly
+  trends report. Decisions go through the same path as `review_queue`, so labels and template memory follow. Accounts
+  are made only from the command line: `python -m scam_detector.tools.reviewers add --email ... --name ... --school fsu`
+  prints a temporary password once (`--school ""` sees every school); `list`, `reset`, `disable`, `enable`. Sessions are
+  HttpOnly, SameSite=Strict cookies stored as hashes; forms carry CSRF tokens; pages allow no scripts. Set
+  `REVIEW_COOKIE_SECURE=0` only for local http.
 - Close calls go to a reviewer only with the student's consent (active learning, migration 005). When the rules don't
   send a check to a person but the model flags it or scores it within 0.15 of its threshold, `/analyze` returns
   `ask_review` and the embed shows "Let a reviewer check it". Tapping it posts the text through `/report` with

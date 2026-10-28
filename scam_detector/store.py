@@ -19,6 +19,14 @@ The learning loop (learning.py) also keeps its state here, with times as Unix se
     store.start_run(trigger, live_labels) -> id / store.finish_run(id, **kw) / store.last_run() / store.runs(n)
     store.add_traffic(rec) / store.traffic(since) / store.prune_traffic(before)     drift and shadow comparisons
 
+Reviewer accounts for the review page (review_web.py, reviewers.py, tools/reviewers.py):
+
+    store.add_reviewer(email, name, school, pw_hash) -> id     school "" means every school
+    store.reviewer_by_email(email) -> record with pw_hash, or None / store.reviewers() -> [record without pw_hash]
+    store.set_reviewer(email, pw_hash=None, active=None) -> bool / store.touch_login(reviewer_id)
+    store.add_session(token_hash, reviewer_id, expires_at) / store.session_reviewer(token_hash) -> record or None
+    store.drop_session(token_hash) / store.drop_sessions(reviewer_id) / store.get_report(id) -> record or None
+
 A career center's own lists (guardrails.py):
 
     store.school_rules(school) -> [{kind, value, reason, added_by, added_at}]          active entries
@@ -73,6 +81,15 @@ def _label_source(kind, label: str) -> str:
     for a close call the detector asked about (so the two can be told apart in the trends and retrain notes)."""
     base = "borderline" if kind == "borderline" else "report"
     return base if label == "scam" else base + "_real"
+
+
+def _check_reviewer(email: str, name: str) -> tuple:
+    email, name = (email or "").strip().lower(), (name or "").strip()[:80]
+    if "@" not in email or email.startswith("@") or email.endswith("@") or len(email) > 254:
+        raise ValueError(f"not an email address: {email!r}")
+    if not name:
+        raise ValueError("a reviewer needs a name (it's recorded on every decision)")
+    return email, name
 
 
 def _check_decision(decision: str, reviewer: str) -> None:
@@ -295,6 +312,82 @@ class JsonlStore:
         if hit:
             self._rewrite(p, rows)
         return hit
+
+    # ---- reviewer accounts (review_web.py) ----
+
+    def get_report(self, report_id) -> Optional[dict]:
+        rows = self._read(self.reports_path)
+        try:
+            i = int(report_id)
+        except (TypeError, ValueError):
+            return None
+        return {**rows[i], "id": str(i)} if 0 <= i < len(rows) else None
+
+    def _reviewer_rows(self) -> list:
+        return self._read(self._p("reviewers.jsonl"))
+
+    @staticmethod
+    def _public(r: dict) -> dict:
+        return {k: v for k, v in r.items() if k != "pw_hash"}
+
+    def add_reviewer(self, email: str, name: str, school: str, pw_hash: str) -> str:
+        email, name = _check_reviewer(email, name)
+        rows = self._reviewer_rows()
+        if any(r["email"] == email for r in rows):
+            raise ValueError(f"{email} already has an account")
+        rid = str(len(rows) + 1)
+        self._append(self._p("reviewers.jsonl"), {"id": rid, "email": email, "name": name, "school": school or "",
+                                                  "pw_hash": pw_hash, "active": True, "created_at": time.time(),
+                                                  "last_login": None})
+        return rid
+
+    def reviewer_by_email(self, email: str) -> Optional[dict]:
+        email = (email or "").strip().lower()
+        return next((r for r in self._reviewer_rows() if r["email"] == email), None)
+
+    def reviewers(self) -> List[dict]:
+        return [self._public(r) for r in self._reviewer_rows()]
+
+    def set_reviewer(self, email: str, pw_hash: Optional[str] = None, active: Optional[bool] = None) -> bool:
+        p, rows, hit = self._p("reviewers.jsonl"), self._reviewer_rows(), False
+        for r in rows:
+            if r["email"] == (email or "").strip().lower():
+                if pw_hash is not None:
+                    r["pw_hash"] = pw_hash
+                if active is not None:
+                    r["active"] = bool(active)
+                hit = True
+        if hit:
+            self._rewrite(p, rows)
+        return hit
+
+    def touch_login(self, reviewer_id) -> None:
+        p, rows = self._p("reviewers.jsonl"), self._reviewer_rows()
+        for r in rows:
+            if r["id"] == str(reviewer_id):
+                r["last_login"] = time.time()
+        self._rewrite(p, rows)
+
+    def add_session(self, token_hash: str, reviewer_id, expires_at: float) -> None:
+        self._append(self._p("reviewer_sessions.jsonl"), {"token_hash": token_hash, "reviewer_id": str(reviewer_id),
+                                                          "expires_at": float(expires_at)})
+
+    def session_reviewer(self, token_hash: str) -> Optional[dict]:
+        now = time.time()
+        s = next((x for x in self._read(self._p("reviewer_sessions.jsonl"))
+                  if x["token_hash"] == token_hash and x["expires_at"] > now), None)
+        if s is None:
+            return None
+        r = next((x for x in self._reviewer_rows() if x["id"] == s["reviewer_id"] and x.get("active")), None)
+        return self._public(r) if r else None
+
+    def drop_session(self, token_hash: str) -> None:
+        p = self._p("reviewer_sessions.jsonl")
+        self._rewrite(p, [x for x in self._read(p) if x["token_hash"] != token_hash and x["expires_at"] > time.time()])
+
+    def drop_sessions(self, reviewer_id) -> None:
+        p = self._p("reviewer_sessions.jsonl")
+        self._rewrite(p, [x for x in self._read(p) if x["reviewer_id"] != str(reviewer_id)])
 
 
 # ---------------------------------------------------------------- Postgres
@@ -646,6 +739,85 @@ class PostgresStore:
                         "WHERE school_id = %s AND kind = %s AND value = %s AND status = 'active'",
                         (removed_by.strip()[:80], school, kind, value))
             return cur.rowcount > 0
+
+    # ---- reviewer accounts (review_web.py) ----
+
+    def get_report(self, report_id) -> Optional[dict]:
+        try:
+            rid = int(report_id)
+        except (TypeError, ValueError):
+            return None
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute(self._REPORT_SQL.replace("WHERE (", "WHERE r.id = %(id)s AND ("),
+                        {"id": rid, "status": "", "school": "", "since": ""})
+            row = cur.fetchone()
+            return self._record(row) if row else None
+
+    _REVIEWER_COLS = "r.id, r.email, r.name, coalesce(r.school_id, ''), r.active, r.created_at, r.last_login"
+
+    @staticmethod
+    def _reviewer(row) -> dict:
+        rid, email, name, school, active, created, last = row[:7]
+        rec = {"id": str(rid), "email": email, "name": name, "school": school, "active": active,
+               "created_at": _epoch(created), "last_login": _epoch(last)}
+        if len(row) > 7:
+            rec["pw_hash"] = row[7]
+        return rec
+
+    def add_reviewer(self, email: str, name: str, school: str, pw_hash: str) -> str:
+        email, name = _check_reviewer(email, name)
+        with self._conn() as conn, conn.cursor() as cur:
+            if school and self._school(cur, school) is None:
+                raise ValueError(f"unknown school {school!r}")
+            cur.execute("INSERT INTO reviewers (email, name, school_id, pw_hash) VALUES (%s, %s, %s, %s) "
+                        "ON CONFLICT (email) DO NOTHING RETURNING id", (email, name, school or None, pw_hash))
+            row = cur.fetchone()
+            if row is None:
+                raise ValueError(f"{email} already has an account")
+            return str(row[0])
+
+    def reviewer_by_email(self, email: str) -> Optional[dict]:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT {self._REVIEWER_COLS}, r.pw_hash FROM reviewers r WHERE r.email = %s",
+                        ((email or "").strip().lower(),))
+            row = cur.fetchone()
+            return self._reviewer(row) if row else None
+
+    def reviewers(self) -> List[dict]:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT {self._REVIEWER_COLS} FROM reviewers r ORDER BY r.id")
+            return [self._reviewer(x) for x in cur.fetchall()]
+
+    def set_reviewer(self, email: str, pw_hash: Optional[str] = None, active: Optional[bool] = None) -> bool:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE reviewers SET pw_hash = coalesce(%s, pw_hash), active = coalesce(%s, active) "
+                        "WHERE email = %s", (pw_hash, active, (email or "").strip().lower()))
+            return cur.rowcount > 0
+
+    def touch_login(self, reviewer_id) -> None:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE reviewers SET last_login = now() WHERE id = %s", (int(reviewer_id),))
+
+    def add_session(self, token_hash: str, reviewer_id, expires_at: float) -> None:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("DELETE FROM reviewer_sessions WHERE expires_at < now()")
+            cur.execute("INSERT INTO reviewer_sessions (token_hash, reviewer_id, expires_at) "
+                        "VALUES (%s, %s, to_timestamp(%s))", (token_hash, int(reviewer_id), float(expires_at)))
+
+    def session_reviewer(self, token_hash: str) -> Optional[dict]:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT {self._REVIEWER_COLS} FROM reviewer_sessions s JOIN reviewers r ON r.id = s.reviewer_id "
+                        "WHERE s.token_hash = %s AND s.expires_at > now() AND r.active", (token_hash,))
+            row = cur.fetchone()
+            return self._reviewer(row) if row else None
+
+    def drop_session(self, token_hash: str) -> None:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("DELETE FROM reviewer_sessions WHERE token_hash = %s OR expires_at < now()", (token_hash,))
+
+    def drop_sessions(self, reviewer_id) -> None:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("DELETE FROM reviewer_sessions WHERE reviewer_id = %s", (int(reviewer_id),))
 
 
 _STORE = None

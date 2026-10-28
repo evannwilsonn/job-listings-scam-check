@@ -15,7 +15,7 @@ URL = os.environ.get("TEST_DATABASE_URL", "")
 pytestmark = pytest.mark.skipif(not re.search(r"/[\w-]*_test(\?|$)", URL), reason="no *_test database configured")
 
 TABLES = ("outcomes, cases, labels, sightings, report_indicators, templates, reports, indicators, model_traffic, release_log, "
-          "retrain_runs, models")
+          "retrain_runs, models, reviewer_sessions, reviewers")
 
 
 @pytest.fixture()
@@ -167,3 +167,32 @@ def test_models_release_runs_and_traffic(pg):
     assert len(t) == 1 and t[0]["other_flag"] is True
     pg.prune_traffic(time.time() + 60)
     assert pg.traffic(0) == []
+
+
+def test_reviewer_accounts_and_sessions(pg):
+    import time
+    from scam_detector import reviewers as acct
+    rid = pg.add_reviewer("JDoe@FSU.edu", "J. Doe", "fsu", acct.hash_password("harbor violet ladder"))
+    op = pg.add_reviewer("evan@example.com", "Evan", "", acct.hash_password("another long password"))
+    import pytest
+    with pytest.raises(ValueError):
+        pg.add_reviewer("jdoe@fsu.edu", "Again", "fsu", "x")
+    with pytest.raises(ValueError):
+        pg.add_reviewer("x@y.edu", "X", "nowhere", "x")
+    r = pg.reviewer_by_email("jdoe@fsu.edu")
+    assert r["school"] == "fsu" and acct.verify_password("harbor violet ladder", r["pw_hash"])
+    assert [x["school"] for x in pg.reviewers()] == ["fsu", ""] and all("pw_hash" not in x for x in pg.reviewers())
+    _, h = acct.new_session()
+    _, old = acct.new_session()
+    pg.add_session(h, rid, time.time() + 3600)
+    pg.add_session(old, op, time.time() - 5)
+    assert pg.session_reviewer(h)["name"] == "J. Doe" and pg.session_reviewer(old) is None
+    pg.set_reviewer("jdoe@fsu.edu", active=False)
+    assert pg.session_reviewer(h) is None
+    pg.set_reviewer("jdoe@fsu.edu", active=True)
+    pg.touch_login(rid)
+    assert pg.reviewer_by_email("jdoe@fsu.edu")["last_login"] is not None
+    pg.drop_sessions(rid)
+    assert pg.session_reviewer(h) is None
+    rep = pg.add_report(_report())
+    assert pg.get_report(rep)["school"] == "fsu" and pg.get_report("999999") is None and pg.get_report("x") is None
