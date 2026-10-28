@@ -70,7 +70,7 @@ def test_login_queue_order_and_a_scam_decision(_isolated_store, capsys):
     assert "<b>3</b>Waiting" in html and "Kestrelwood" not in html                           # school-scoped
     assert "850-555-0142" not in html                                                  # masked before it was stored
     order = [int(x) for x in re.findall(r"Report #(\d+)", html)]
-    assert order == [2, 1, 0]                                                          # acted first, then riskiest
+    assert order == [3, 2, 1]                                                          # acted first, then riskiest; shown counting from 1
     assert "Student already deposited a check" in html and "Close call" in html
     assert 'class="gauge z3"' in html and "Risk " in html and "They'll send you money" in html.replace("&#x27;", "'")
     assert c.get("/review/queue?tab=acted").text.count("Report #") == 1

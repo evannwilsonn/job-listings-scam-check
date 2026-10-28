@@ -17,6 +17,8 @@ import datetime as dt
 from collections import Counter
 from typing import Optional
 
+MIN_RATE = 10   # below this many confirmed scams a percentage means little; the dashboard uses the same cutoff
+
 # Scheme families, first match wins. Rule ids are the rulepack's (scam_detector/rulepack/core.json).
 FAMILIES = [
     ("Fake checks and money mule", {"fake_check_funds", "fake_check_es", "money_mule", "mule_recruitment", "reship_home", "crypto_atm"}),
@@ -165,9 +167,10 @@ def render(d: dict, school_name: Optional[str] = None) -> str:
         lines += [f"| {n} | {a} | {b} | {_change(a, b)} |" for n, a, b in sorted(d["families"], key=lambda x: -x[1])]
         lines.append("")
     if d["confirmed"]:
-        pct = round(d["caught"] / d["confirmed"] * 100)
+        pct = f" ({round(d['caught'] / d['confirmed'] * 100)}%)" if d["confirmed"] >= MIN_RATE else ""
+        early = "" if d["confirmed"] >= MIN_RATE else " Too few confirmed scams yet to give a rate."
         lines += ["## Is the detector keeping up", "",
-                  f"Today's detector flags **{d['caught']} of {d['confirmed']}** ({pct}%) of this month's confirmed scams on its own."]
+                  f"Today's detector flags **{d['caught']} of {d['confirmed']}**{pct} of this month's confirmed scams on its own.{early}"]
         if d["misses"]:
             lines += ["The ones it missed are what LureCheck learns from next:", ""]
             lines += [f"- \"{t.strip()}...\"" + (f" ({n} copies)" if n > 1 else "") for t, n in d["misses"]]

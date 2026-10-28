@@ -45,7 +45,7 @@ HARM = {"sent_money": "sent money", "deposited_check": "deposited a check", "sha
 BAND = {"block": "likely scam", "review": "needs a person", "caution": "be careful", "clear": "no scam signs"}
 TAG_AGGREGATOR = "[aggregator]"
 TAG_UNCLEAR = "[unclear]"
-MIN_RATE = 10                                         # below this many confirmed scams a percentage means little
+from .trends import MIN_RATE  # noqa: E402  one cutoff for the dashboard and the monthly report
 _URL = re.compile(r"https?://[^\s<>\"')\]]+", re.I)
 FONTS = ("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,500..700,0..100"
          "&family=Martian+Mono:wdth,wght@75..100,400..600&family=Plus+Jakarta+Sans:wght@400..700&display=swap")
@@ -84,6 +84,14 @@ def _who(request: Request):
 
 def _school_label(code: str) -> str:
     return guardrails.school_name(code) or code or "Every school"
+
+
+def _num(rid) -> str:
+    """The report number staff see. Queue ids start at 0; people count from 1. Forms and URLs keep the real id."""
+    try:
+        return str(int(rid) + 1)
+    except (TypeError, ValueError):
+        return str(rid)
 
 
 def _day(iso: str) -> str:
@@ -627,7 +635,7 @@ def _card(r: dict, a: dict, who: dict, token: str, tab: str = "waiting", impact:
     text = r.get("text_masked") or ""
     lg = a.get("lead_gen") or {}
     school = f" · {e(_school_label(r.get('school', '')))}" if not who["school"] else ""
-    head = (f'<div class="c-head"><div><span class="r-id">Report #{e(r["id"])} · {e(_day(r.get("received", "")))}{school}</span>'
+    head = (f'<div class="c-head"><div><span class="r-id">Report #{e(_num(r["id"]))} · {e(_day(r.get("received", "")))}{school}</span>'
             f'<h3 class="c-title">{e(_headline(text)) if text else "Text removed after 30 days"}</h3></div>'
             f'{_gauge(a["score"], a["band"])}</div>')
     tags = [_seen_stamp(a)]
@@ -698,7 +706,7 @@ def _card(r: dict, a: dict, who: dict, token: str, tab: str = "waiting", impact:
                      f'check{"s" if impact != 1 else ""}.</p>')
         v = _verdict(r)
         hits = f' · <em>flagged {impact:,} later check{"s" if impact != 1 else ""}</em>' if impact else ""
-        row = (f'<summary class="d-row"><span class="r-id">#{e(r["id"])}</span>'
+        row = (f'<summary class="d-row"><span class="r-id">#{e(_num(r["id"]))}</span>'
                f'<span class="d-title">{e(_headline(text)) if text else "Text removed after 30 days"}</span>'
                f'<span class="d-v v-{v.split()[0].lower()}">{e(v)}</span>'
                f'<span class="d-meta">{e(r.get("reviewer", ""))} · {e(_day(r.get("reviewed_at", "")))}{hits}</span></summary>')
@@ -720,8 +728,8 @@ FLASH = {"scam": "Confirmed as a scam. Any student who checks a copy of this mes
 
 def _stub(n: str, done: str, token: str, tab: str) -> str:
     if done == "undone":
-        return f'<div class="card stub" id="decided"><p><b>Report #{e(n)}</b> is back in the queue. Nothing was kept from that decision.</p></div>'
-    return (f'<div class="card stub" id="decided"><p><b>Report #{e(n)}.</b> {e(FLASH[done])}</p>'
+        return f'<div class="card stub" id="decided"><p><b>Report #{e(_num(n))}</b> is back in the queue. Nothing was kept from that decision.</p></div>'
+    return (f'<div class="card stub" id="decided"><p><b>Report #{e(_num(n))}.</b> {e(FLASH[done])}</p>'
             f'<form method="post" action="/review/undo"><input type="hidden" name="csrf" value="{acct.csrf_for(token)}">'
             f'<input type="hidden" name="id" value="{e(n)}"><input type="hidden" name="tab" value="{e(tab)}">'
             f'<button class="btn ghost">Undo</button></form></div>')
@@ -833,7 +841,7 @@ def home(request: Request):
              f'<p class="meta"><a href="/review/trends">Full monthly report</a></p></div>' if kinds else
              '<div class="card"><h2>What\'s hitting students</h2><p class="sub">Scheme types appear here once scams are confirmed.</p></div>')
     recent = sorted(g["decided"], key=lambda r: r.get("reviewed_at") or "", reverse=True)[:5]
-    rec = "".join(f'<li><span>#{e(r["id"])} · {e(_headline(r.get("text_masked") or ""))}</span>'
+    rec = "".join(f'<li><span>#{e(_num(r["id"]))} · {e(_headline(r.get("text_masked") or ""))}</span>'
                   f'<b>{e(_verdict(r))}</b></li>'
                   for r in recent)
     rec = f'<div class="card"><h2>Latest decisions</h2><ul class="list">{rec}</ul></div>' if rec else ""
