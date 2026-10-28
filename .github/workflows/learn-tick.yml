@@ -1,0 +1,45 @@
+name: learn-tick
+
+# The learning loop's heartbeat (scam_detector/learning.py, tools/learn.py): every 30 minutes, retrain when the evidence
+# calls for it and move a new model through shadow, staged rollout and watch, rolling back on its own. Needs the
+# DATABASE_URL repository secret (the Neon pooled string). Does nothing when the secret is missing. The labeled corpora
+# (LURECHECK_DATA) come from nolecareershield/scam_detector/data, checked out alongside.
+on:
+  schedule:
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: learn-tick
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      LURECHECK_DATA: ${{ github.workspace }}/corpora/scam_detector/data
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: evannwilsonn/nolecareershield
+          path: corpora
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: Status before
+        if: env.DATABASE_URL != ''
+        run: python -m scam_detector.tools.learn status | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Tick
+        if: env.DATABASE_URL != ''
+        run: python -m scam_detector.tools.learn tick | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: No DATABASE_URL secret
+        if: env.DATABASE_URL == ''
+        run: echo "DATABASE_URL secret not set; nothing to do." >> "$GITHUB_STEP_SUMMARY"
