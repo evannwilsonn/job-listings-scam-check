@@ -140,11 +140,56 @@ def _zone(score: int) -> int:
     return 0 if score < 25 else 1 if score < 50 else 2 if score < 75 else 3
 
 
-def _gauge(score: int) -> str:
+def _gauge(score: int, band: str) -> str:
+    """The one place a card states its risk: a small instrument, the number, and the band in words."""
     z = _zone(score)
-    return (f'<div class="gauge z{z}" role="img" aria-label="Risk {score} of 100"><span class="g-end">0</span>'
+    return (f'<div class="gauge z{z}" role="img" aria-label="Risk {score} of 100, {e(BAND.get(band, band))}">'
             f'<div class="g-track"><i></i><i></i><i></i><i></i><b style="left:{max(0, min(100, score))}%"></b></div>'
-            f'<span class="g-end">100</span><span class="g-num">{score}</span></div>')
+            f'<span class="g-num">{score}</span><span class="g-band">{e(BAND.get(band, band))}</span></div>')
+
+
+_GREETING = re.compile(r"^\s*(?:hello|hi|hey|dear|good (?:morning|afternoon|evening))\b[^.!?,\n]{0,40}[.!?,\n]+\s*", re.I)
+
+
+def _headline(text: str) -> str:
+    """What the report is about, in one line: its first real sentence."""
+    t = _GREETING.sub("", (text or "").strip())
+    first = re.split(r"(?<=[.!?])\s+|\n", t, maxsplit=1)[0].strip() or t[:90]
+    first = first[:1].upper() + first[1:]
+    return first if len(first) <= 96 else first[:93].rsplit(" ", 1)[0] + "…"
+
+
+def _matched_in(text: str, f: dict) -> list:
+    """The phrases a flag matched, as the student's message actually wrote them."""
+    low, out = (text or "").lower(), []
+    for m in f.get("matched") or []:
+        if isinstance(m, str) and len(m.strip()) >= 3 and m.lower() in low:
+            i = low.index(m.lower())
+            out.append(text[i:i + len(m)])
+    return out
+
+
+def _highlight(text: str, flags: list) -> str:
+    """The message with every phrase a red flag matched marked in place, so the evidence is read, not described."""
+    low, spans = text.lower(), []
+    for f in flags:
+        for m in _matched_in(text, f):
+            start = low.find(m.lower())
+            while start != -1:
+                spans.append((start, start + len(m)))
+                start = low.find(m.lower(), start + len(m))
+    spans.sort()
+    merged = []
+    for a, b in spans:
+        if merged and a <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], b))
+        else:
+            merged.append((a, b))
+    out, pos = [], 0
+    for a, b in merged:
+        out.append(e(text[pos:a]) + f"<mark>{e(text[a:b])}</mark>")
+        pos = b
+    return "".join(out) + e(text[pos:])
 
 
 # ---------------------------------------------------------------- page shell
@@ -246,7 +291,34 @@ a.stat:hover{border-color:var(--line2)}}
 .flash,.err{transition:opacity 220ms var(--ease-out),transform 220ms var(--ease-out)}
 @starting-style{.flash,.err{opacity:0;transform:translateY(-4px)}}
 @media (prefers-reduced-motion:reduce){.btn:active,.me button:active,a.stat:active{transform:none}
-@starting-style{.flash,.err{transform:none}}}
+@starting-style{.flash,.err,.stub{transform:none}}}
+/* Type in four steps: 12 labels, 14 secondary, 16 reading, 22/30 headings. */
+body{font-size:16px}h1{font-size:30px}h2{font-size:22px}
+.kick,.r-id,.tag,table.rules th,.g-band{font-size:12px}
+.sub,.meta,.btn,nav.main a,.tabs a,.me,.stat span,.list li,.flags p,.flags q,.why-t,table.rules{font-size:14px}
+.text,.flags b,.c-title,.tabs a b,.g-num{font-size:16px}.stat b{font-size:30px}
+/* The card reads top to bottom the way a reviewer decides: what is it, the evidence, the flags, the answer. */
+.c-head{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:flex-start;justify-content:space-between;margin-bottom:10px}
+.c-head>div:first-child{min-width:0;flex:1 1 320px}
+.c-title{font-family:var(--sans);font-weight:700;line-height:1.35;margin:3px 0 0;text-wrap:balance}
+.gauge{margin:2px 0 0;max-width:none;flex:0 0 auto;gap:9px}.g-track{flex:none;width:112px;margin:0 8px 0 0}
+.g-band{font-family:var(--mono);font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--soft)}
+.text mark{background:#FDE6A8;color:inherit;border-radius:3px;padding:0 2px;-webkit-box-decoration-break:clone;box-decoration-break:clone}
+.flags li{padding:3px 0 3px 11px;margin:0 0 6px}
+.flags summary{display:grid;grid-template-columns:1fr auto;column-gap:12px;cursor:pointer;list-style:none}
+.flags summary::-webkit-details-marker{display:none}
+.flags summary b{display:block;grid-column:1}.flags q{display:block;grid-column:1;color:var(--soft);font-family:var(--sans);quotes:"“" "”"}
+.why-t{grid-column:2;grid-row:1;color:var(--b);font-weight:600}.flags details[open] .why-t{color:var(--dim)}
+.flags p{margin:4px 0 2px;color:var(--soft);max-width:72ch}
+.tag.seen{background:var(--b-t);color:var(--b);font-weight:700}
+.btn{display:inline-flex;align-items:center;gap:8px}.btn i{width:8px;height:8px;border-radius:50%;flex:none}
+.btn.primary{background:var(--navy);color:#fff}.btn.ghost{background:#fff;border-color:var(--line2);color:var(--ink)}
+.stub{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;justify-content:space-between;background:var(--g-t);border-color:#BFE3CF;box-shadow:none}
+.stub p{margin:0;flex:1 1 360px}.stub form{margin:0}
+.stub{transition:opacity 220ms var(--ease-out),transform 220ms var(--ease-out)}@starting-style{.stub{opacity:0;transform:translateY(-4px)}}
+.stat.static{background:transparent;box-shadow:none;border-style:dashed}
+@media (hover:hover) and (pointer:fine){.btn.primary:hover{background:var(--navy2)}.btn.ghost:hover{background:#F7F7F4;border-color:#C4C0B4}
+.flags summary:hover b{text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:3px}}
 """
 MARK = ('<svg class="mark" viewBox="0 0 40 40" aria-hidden="true"><path d="M20 3 L34 8 V19 C34 28 28 34 20 37 C12 34 6 28 6 19 V8 Z" '
         'fill="#13213A" stroke="#E2BE6A" stroke-width="2"/><path d="M20 11 L22.4 17.6 L29 20 L22.4 22.4 L20 29 L17.6 22.4 L11 20 '
@@ -332,11 +404,27 @@ async def logout(request: Request):
 
 # ---------------------------------------------------------------- the queue
 
+UNDO_SECONDS = 120
+TABS = ("waiting", "acted", "close", "decided")
+
+
 def _groups(rows: list) -> dict:
     pending = [r for r in rows if r.get("status") == "reported"]
     return {"waiting": pending, "acted": [r for r in pending if r.get("outcome") in HARM],
             "close": [r for r in pending if r.get("kind") == "borderline"],
             "decided": [r for r in rows if r.get("status") != "reported"]}
+
+
+def _ordered(st, who, tab: str):
+    """(groups, [(report, assessment)]) for a tab, in the order staff see it."""
+    g = _groups(st.list_reports("", who["school"]))
+    rows = g[tab]
+    if tab == "decided":
+        rows = sorted(rows, key=lambda r: r.get("reviewed_at") or "", reverse=True)[:QUEUE_MAX]
+        return g, [(r, assess(r, st)) for r in rows]
+    scored = [(r, assess(r, st)) for r in rows]
+    scored.sort(key=lambda x: (x[0].get("outcome") not in HARM, -x[1]["score"], x[0].get("received", "")))
+    return g, scored[:QUEUE_MAX]
 
 
 def _tabs(g: dict, on: str) -> str:
@@ -349,30 +437,49 @@ def _tabs(g: dict, on: str) -> str:
     return '<nav class="tabs">' + "".join(out) + "</nav>"
 
 
-def _net_block(a: dict) -> str:
-    items = []
-    word = {"wallet": "A crypto wallet", "email": "An email address", "phone": "A phone number"}
-    for m in a["network"]:
-        what = e(m["value"]) if m["kind"] == "domain" else word.get(m["kind"], "A contact")
-        schools = m.get("schools") or 0
-        where = f"at {schools} school{'s' if schools != 1 else ''}" if schools else ""
-        items.append(f"<li><b>{what}</b> in this report was confirmed as a scam in {m['reports']} earlier "
-                     f"report{'s' if m['reports'] != 1 else ''} {where}, last seen {e(_day(m.get('last_seen', '')))}.</li>")
-    tm = a.get("template")
+def _seen_stamp(a: dict) -> str:
+    schools = max([m.get("schools") or 0 for m in a["network"]] or [0])
+    if schools:
+        return f'<span class="tag seen">Confirmed as a scam at {schools} school{"s" if schools != 1 else ""} before</span>'
+    tm = a.get("template") or {}
+    if tm.get("rule_id") == "peer_scam_template":
+        return '<span class="tag seen">Same script confirmed at another school</span>'
     if tm:
-        items.append(f"<li><b>{e(tm['title'])}.</b> {e(tm['why'])}</li>")
-    if not items:
-        return ""
-    return f'<div class="net"><strong>Seen before</strong><ul>{"".join(items)}</ul></div>'
+        return '<span class="tag seen">Same script confirmed here before</span>'
+    return ""
 
 
-def _card(r: dict, a: dict, who: dict, token: str, decided: bool = False) -> str:
-    z = _zone(a["score"])
-    pill_bits = [f"Risk {a['score']}", BAND.get(a["band"], a["band"])]
+def _network_why(a: dict) -> str:
+    word = {"wallet": "A crypto wallet", "email": "An email address", "phone": "A phone number"}
+    bits = []
+    for m in a["network"]:
+        what = m["value"] if m["kind"] == "domain" else word.get(m["kind"], "A contact")
+        n, sc = m.get("reports") or 0, m.get("schools") or 0
+        bits.append(f"{what} was confirmed as a scam in {n} earlier report{'s' if n != 1 else ''}"
+                    f"{f' at {sc} school' + ('s' if sc != 1 else '') if sc else ''}, last seen {_day(m.get('last_seen', ''))}.")
+    return " ".join(bits)
+
+
+DOT = {"scam": "var(--r)", "real": "var(--g)", "aggregator": "var(--b)", "unclear": "var(--dim)"}
+
+
+def _buttons(a: dict) -> str:
+    """The likely answer is the primary button: scam when the detector leans that way, real job when it doesn't."""
+    lean = "scam" if a["band"] in ("block", "review") or a["network"] else "real"
+    labels = [("scam", "It's a scam"), ("real", "It's a real job"), ("aggregator", "Aggregator"), ("unclear", "Not enough to tell")]
+    return "".join(f'<button class="btn {"primary" if k == lean else "ghost"}" name="action" value="{k}">'
+                   f'<i style="background:{DOT[k]}"></i>{t}</button>' for k, t in labels)
+
+
+def _card(r: dict, a: dict, who: dict, token: str, tab: str = "waiting") -> str:
+    decided = tab == "decided"
+    text = r.get("text_masked") or ""
     lg = a.get("lead_gen") or {}
-    if lg.get("flag"):
-        pill_bits.append("aggregator")
-    tags = []
+    school = f" · {e(_school_label(r.get('school', '')))}" if not who["school"] else ""
+    head = (f'<div class="c-head"><div><span class="r-id">Report #{e(r["id"])} · {e(_day(r.get("received", "")))}{school}</span>'
+            f'<h3 class="c-title">{e(_headline(text)) if text else "Text removed after 30 days"}</h3></div>'
+            f'{_gauge(a["score"], a["band"])}</div>')
+    tags = [_seen_stamp(a)]
     if r.get("outcome") in HARM:
         tags.append(f'<span class="tag harm">Student already {e(HARM[r["outcome"]])}</span>')
     if r.get("kind") == "borderline":
@@ -384,30 +491,27 @@ def _card(r: dict, a: dict, who: dict, token: str, decided: bool = False) -> str
         label = ("Aggregator" if note.startswith(TAG_AGGREGATOR) else
                  {"confirmed": "Scam", "dismissed": "Dismissed"}.get(r.get("status"), r.get("status", "")))
         tags.append(f'<span class="tag">{e(label)} · {e(r.get("reviewer", ""))} · {e(_day(r.get("reviewed_at", "")))}</span>')
-    school = f" · {e(_school_label(r.get('school', '')))}" if not who["school"] else ""
-    head = (f'<div class="r-head"><span class="r-id">Report #{e(r["id"])} · {e(_day(r.get("received", "")))}{school}</span>'
-            f'<span class="pill p{z}">{" · ".join(e(b) for b in pill_bits)}</span></div>')
-    body = head + _gauge(a["score"]) + (f'<div class="tags">{"".join(tags)}</div>' if tags else "")
-    flags = []
+    tags = "".join(t for t in tags if t)
+    body = head + (f'<div class="tags">{tags}</div>' if tags else "")
+    body += f'<div class="text">{_highlight(text, a["flags"]) if text else "(the text was removed after 30 days)"}</div>'
+    items = []
     for f in a["flags"]:
-        if f.get("rule_id") == "confirmed_scam_indicator":
-            continue
         sev = "crit" if f.get("severity") == "critical" else "warn"
-        flags.append(f'<li class="{sev}"><b>{e(f.get("title", ""))}</b><span>{e(f.get("why", ""))}</span></li>')
+        if f.get("rule_id") == "confirmed_scam_indicator":
+            quote, why = ", ".join(m["value"] for m in a["network"] if m["kind"] == "domain"), _network_why(a)
+        else:
+            q = _matched_in(text, f)
+            quote, why = (q[0] if q else ""), f.get("why", "")
+        items.append(f'<li class="{sev}"><details><summary><b>{e(f.get("title", ""))}</b>'
+                     f'{f"<q>{e(quote)}</q>" if quote else ""}<span class="why-t">Why</span></summary>'
+                     f'<p>{e(why)}</p></details></li>')
     for rs in (lg.get("reasons") or [])[:3]:
-        flags.append(f'<li class="note"><b>Aggregator signal</b><span>{e(rs.get("reason", ""))}</span></li>')
-    if a.get("model"):
-        pct = a["model"]["probability"] * 100
-        pct = "over 99%" if pct >= 99.5 else f"{round(pct)}%"
-        flags.append(f'<li class="note"><b>The trained model rates it {pct} likely to be a scam</b>'
-                     f'<span>It learned from cases reviewers decided. It can ask for a person; it never decides on its own.</span></li>')
-    if flags:
-        body += f'<ul class="flags">{"".join(flags)}</ul>'
+        items.append(f'<li class="note"><details><summary><b>Aggregator signal</b><q>{e((rs.get("matched") or [""])[0])}</q>'
+                     f'<span class="why-t">Why</span></summary><p>{e(rs.get("reason", ""))}</p></details></li>')
+    if items:
+        body += f'<ul class="flags">{"".join(items)}</ul>'
     elif not decided:
         body += '<p class="meta">No red flags from the rules. That alone doesn\'t make it real; read it.</p>'
-    body += _net_block(a)
-    text = r.get("text_masked") or "(the text was removed after 30 days)"
-    body += f'<div class="text">{e(text)}</div>'
     ind = r.get("indicators") or {}
     bits = []
     if ind.get("domains"):
@@ -415,22 +519,23 @@ def _card(r: dict, a: dict, who: dict, token: str, decided: bool = False) -> str
     for k, word in (("email_hashes", "email address"), ("phone_hashes", "phone number"), ("wallets", "crypto wallet")):
         n = len(ind.get(k) or [])
         if n:
-            bits.append(f"{n} {word}{'es' if word.endswith('ss') and n > 1 else 's' if n > 1 else ''} (hidden)")
+            bits.append(f"{n} {word}{'es' if word.endswith('ss') and n > 1 else 's' if n > 1 else ''} hidden")
+    if a.get("model"):
+        pct = a["model"]["probability"] * 100
+        bits.append(f"Trained model: {'over 99%' if pct >= 99.5 else f'{round(pct)}%'} likely a scam")
     if bits:
         body += f'<p class="meta">{" · ".join(bits)}</p>'
     if decided:
         note = (r.get("note") or "").replace(TAG_AGGREGATOR, "").strip()
         if note:
             body += f'<p class="meta">Note: {e(note)}</p>'
-        return f'<article class="card">{body}</article>'
+        return f'<article class="card" id="r-{e(r["id"])}">{body}</article>'
     body += (f'<form class="decide" method="post" action="/review/decide"><input type="hidden" name="csrf" '
              f'value="{acct.csrf_for(token)}"><input type="hidden" name="id" value="{e(r["id"])}">'
+             f'<input type="hidden" name="tab" value="{e(tab)}">'
              f'<input type="text" name="note" maxlength="500" placeholder="Note (optional)" aria-label="Note">'
-             f'<button class="btn scam" name="action" value="scam">It\'s a scam</button>'
-             f'<button class="btn real" name="action" value="real">It\'s a real job</button>'
-             f'<button class="btn agg" name="action" value="aggregator">Aggregator</button>'
-             f'<button class="btn skip" name="action" value="unclear">Not enough to tell</button></form>')
-    return f'<article class="card">{body}</article>'
+             f'{_buttons(a)}</form>')
+    return f'<article class="card" id="r-{e(r["id"])}">{body}</article>'
 
 
 FLASH = {"scam": "Confirmed as a scam. Copies of this script are now flagged on every check, its links and contacts "
@@ -440,34 +545,47 @@ FLASH = {"scam": "Confirmed as a scam. Copies of this script are now flagged on 
          "unclear": "Dismissed without a label."}
 
 
+def _stub(n: str, done: str, token: str, tab: str) -> str:
+    if done == "undone":
+        return f'<div class="card stub" id="decided"><p><b>Report #{e(n)}</b> is back in the queue. Nothing was kept from that decision.</p></div>'
+    return (f'<div class="card stub" id="decided"><p><b>Report #{e(n)}.</b> {e(FLASH[done])}</p>'
+            f'<form method="post" action="/review/undo"><input type="hidden" name="csrf" value="{acct.csrf_for(token)}">'
+            f'<input type="hidden" name="id" value="{e(n)}"><input type="hidden" name="tab" value="{e(tab)}">'
+            f'<button class="btn ghost">Undo</button></form></div>')
+
+
 @router.get("/review/queue", response_class=HTMLResponse)
-def queue(request: Request, tab: str = "waiting", done: str = "", n: str = ""):
+def queue(request: Request, tab: str = "waiting", done: str = "", n: str = "", at: str = ""):
     who, token = _who(request)
     if not who:
         return _to("/review/login")
-    tab = tab if tab in ("waiting", "acted", "close", "decided") else "waiting"
+    tab = tab if tab in TABS else "waiting"
     st = _store()
-    g = _groups(st.list_reports("", who["school"]))
-    flash = f'<div class="flash"><b>Report #{e(n)}.</b> {e(FLASH[done])}</div>' if done in FLASH else ""
-    rows = g[tab]
-    if tab == "decided":
-        rows = sorted(rows, key=lambda r: r.get("reviewed_at") or "", reverse=True)[:QUEUE_MAX]
-        scored = [(r, assess(r, st)) for r in rows]
-    else:
-        scored = [(r, assess(r, st)) for r in rows]
-        scored.sort(key=lambda x: (x[0].get("outcome") not in HARM, -x[1]["score"], x[0].get("received", "")))
-        scored = scored[:QUEUE_MAX]
-    cards = "".join(_card(r, a, who, token, decided=(tab == "decided")) for r, a in scored)
+    g, scored = _ordered(st, who, tab)
+    stub = _stub(n, done, token, tab) if (done in FLASH or done == "undone") and n.isdigit() else ""
+    cards, placed = [], False
+    for r, a in scored:
+        if stub and not placed and str(r["id"]) == at:
+            cards.append(stub)
+            placed = True
+        cards.append(_card(r, a, who, token, tab))
+    if stub and not placed:
+        cards.insert(0, stub) if not at else cards.append(stub)
     if not scored:
-        cards = f'<div class="card empty">{"Nothing decided yet." if tab == "decided" else "Nothing here. New reports show up as students send them."}</div>'
+        month = dt.date.today().strftime("%Y-%m")
+        n_month = sum(1 for r in g["decided"] if (r.get("reviewed_at") or "").startswith(month))
+        msg = ("Nothing decided yet." if tab == "decided" else
+               f"Queue clear. You've decided {n_month} report{'s' if n_month != 1 else ''} this month; new ones show up here as students send them.")
+        cards.append(f'<div class="card empty">{e(msg)}</div>')
     sub = {"waiting": "Students who already acted come first, then the riskiest. Your answer becomes a training label, "
                       "so 'Not enough to tell' is better than a guess.",
            "acted": "These students already did something. Decide these first; the student was shown what to do next.",
            "close": "The detector couldn't settle these and the student agreed to let a person look. "
                     "These teach the detector the most.",
-           "decided": f"The last {QUEUE_MAX} decisions. They can't be changed here; ask the operator if one was wrong."}[tab]
+           "decided": f"The last {QUEUE_MAX} decisions. You can undo your own for {UNDO_SECONDS // 60} minutes; "
+                      f"after that, ask the operator."}[tab]
     return _page("Reports", f'<p class="kick">{e(_school_label(who["school"]))}</p><h1>Reports from students</h1>'
-                            f'{_tabs(g, tab)}<p class="sub">{e(sub)}</p>{flash}{cards}', who, token, on="queue")
+                            f'{_tabs(g, tab)}<p class="sub">{e(sub)}</p>{"".join(cards)}', who, token, on="queue")
 
 
 @router.get("/review", response_class=HTMLResponse)
@@ -482,9 +600,9 @@ def home(request: Request):
     schools = [who["school"]] if who["school"] else sorted(guardrails._config())
     tot = {"confirmed": 0, "confirmed_prev": 0, "caught": 0, "real": 0}
     fam: dict = {}
-    for s in schools:
+    for sc in schools:
         try:
-            d = trends.monthly(s, month, st)
+            d = trends.monthly(sc, month, st)
         except Exception:                               # noqa: BLE001
             continue
         tot["confirmed"] += d["confirmed"]
@@ -494,13 +612,14 @@ def home(request: Request):
         for name, a, _ in d["families"]:
             fam[name] = fam.get(name, 0) + a
     acted = len(g["acted"])
-    stats = (f'<div class="grid"><a class="stat" href="/review/queue"><span class="kick">Waiting</span><b>{len(g["waiting"])}</b>'
-             f'<span>reports to decide</span></a>'
-             f'<a class="stat{" urgent" if acted else ""}" href="/review/queue?tab=acted"><span class="kick">Already acted</span>'
-             f'<b>{acted}</b><span>students who sent money or details</span></a>'
-             f'<a class="stat" href="/review/queue?tab=close"><span class="kick">Close calls</span><b>{len(g["close"])}</b>'
-             f'<span>the detector asked for a person</span></a>'
-             f'<div class="stat ok"><span class="kick">This month</span><b>{tot["confirmed"]}</b>'
+    tiles = [(f'<a class="stat{" urgent" if acted else ""}" href="/review/queue?tab=acted"><span class="kick">Already acted</span>'
+              f'<b>{acted}</b><span>students who sent money or details</span></a>', 0 if acted else 1),
+             (f'<a class="stat" href="/review/queue"><span class="kick">Waiting</span><b>{len(g["waiting"])}</b>'
+              f'<span>reports to decide</span></a>', 0.5),
+             (f'<a class="stat" href="/review/queue?tab=close"><span class="kick">Close calls</span><b>{len(g["close"])}</b>'
+              f'<span>the detector asked for a person</span></a>', 2)]
+    tiles = "".join(t for t, _ in sorted(tiles, key=lambda x: x[1]))
+    stats = (f'<div class="grid">{tiles}<div class="stat static"><span class="kick">This month</span><b>{tot["confirmed"]}</b>'
              f'<span>scams confirmed ({tot["confirmed_prev"]} last month)</span></div></div>')
     pct = round(tot["caught"] / tot["confirmed"] * 100) if tot["confirmed"] else 0
     keep = (f'<div class="card"><h2>Is the detector keeping up?</h2><p class="sub" style="margin-bottom:6px">Of this month\'s '
@@ -515,7 +634,7 @@ def home(request: Request):
              f'<p class="meta"><a href="/review/trends">Full monthly report</a></p></div>' if kinds else
              '<div class="card"><h2>What\'s hitting students</h2><p class="sub">Scheme types appear here once scams are confirmed.</p></div>')
     recent = sorted(g["decided"], key=lambda r: r.get("reviewed_at") or "", reverse=True)[:5]
-    rec = "".join(f'<li><span>#{e(r["id"])} · {e((r.get("text_masked") or "")[:60])}…</span>'
+    rec = "".join(f'<li><span>#{e(r["id"])} · {e(_headline(r.get("text_masked") or ""))}</span>'
                   f'<b>{e("Scam" if r.get("status") == "confirmed" else "Aggregator" if (r.get("note") or "").startswith(TAG_AGGREGATOR) else "Dismissed")}</b></li>'
                   for r in recent)
     rec = f'<div class="card"><h2>Latest decisions</h2><ul class="list">{rec}</ul></div>' if rec else ""
@@ -533,13 +652,17 @@ async def decide(request: Request):
     f = await _form(request)
     if not acct.csrf_ok(token, f.get("csrf", "")):
         return _expired(who, token)
-    action = f.get("action", "")
+    action, tab = f.get("action", ""), f.get("tab", "waiting")
+    tab = tab if tab in TABS and tab != "decided" else "waiting"
     if action not in FLASH:
         return _to("/review/queue")
     st = _store()
     r = st.get_report(f.get("id", ""))
     if r is None or (who["school"] and r.get("school") != who["school"]):
         return _page("Not found", '<div class="err">That report isn\'t in your queue.</div>', who, token, 404)
+    _, order = _ordered(st, who, tab)                   # where the reviewer was, so the page returns them there
+    ids = [str(x["id"]) for x, _ in order]
+    nxt = ids[ids.index(str(r["id"])) + 1] if str(r["id"]) in ids and ids.index(str(r["id"])) + 1 < len(ids) else ""
     decision, real = ("confirmed", False) if action == "scam" else ("dismissed", action == "real")
     note = f.get("note", "")[:480]
     if action == "aggregator":
@@ -553,7 +676,37 @@ async def decide(request: Request):
         learning.after_decision(rec, decision, real, st=st)
     except Exception:                                   # noqa: BLE001 - the decision stands; memory catches up next time
         pass
-    return _to(f"/review/queue?done={action}&n={quote(str(r['id']))}")
+    return _to(f"/review/queue?tab={tab}&done={action}&n={quote(str(r['id']))}&at={quote(nxt)}#decided")
+
+
+@router.post("/review/undo")
+async def undo(request: Request):
+    """The same reviewer, within UNDO_SECONDS: the report goes back in the queue and its label and memory go with it."""
+    who, token = _who(request)
+    if not who:
+        return _to("/review/login")
+    f = await _form(request)
+    if not acct.csrf_ok(token, f.get("csrf", "")):
+        return _expired(who, token)
+    tab = f.get("tab", "waiting")
+    tab = tab if tab in TABS and tab != "decided" else "waiting"
+    st = _store()
+    r = st.get_report(f.get("id", ""))
+    if r is None or (who["school"] and r.get("school") != who["school"]):
+        return _page("Not found", '<div class="err">That report isn\'t in your queue.</div>', who, token, 404)
+    was = r.get("status")
+    try:
+        rec = st.undo_decision(r["id"], who["name"], UNDO_SECONDS)
+    except ValueError:
+        return _page("Too late to undo", f'<div class="err">That decision can only be undone by the person who made it, '
+                                         f'within {UNDO_SECONDS // 60} minutes. Ask the operator.</div>', who, token, 409)
+    if was == "confirmed" and rec.get("text_masked"):
+        try:
+            from . import learning
+            learning.forget(rec["text_masked"], st)
+        except Exception:                               # noqa: BLE001
+            pass
+    return _to(f"/review/queue?tab={tab}&done=undone&n={quote(str(r['id']))}&at={quote(str(r['id']))}#decided")
 
 
 # ---------------------------------------------------------------- the school's trusted and blocked domains

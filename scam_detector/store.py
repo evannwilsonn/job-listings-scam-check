@@ -26,6 +26,8 @@ Reviewer accounts for the review page (review_web.py, reviewers.py, tools/review
     store.set_reviewer(email, pw_hash=None, active=None) -> bool / store.touch_login(reviewer_id)
     store.add_session(token_hash, reviewer_id, expires_at) / store.session_reviewer(token_hash) -> record or None
     store.drop_session(token_hash) / store.drop_sessions(reviewer_id) / store.get_report(id) -> record or None
+    store.undo_decision(id, reviewer, within_seconds) -> record    the same reviewer, shortly after: back in the queue,
+        its training label removed, and (Postgres) its indicators un-confirmed unless another confirmed report names them
 
 A career center's own lists (guardrails.py):
 
@@ -81,6 +83,13 @@ def _label_source(kind, label: str) -> str:
     for a close call the detector asked about (so the two can be told apart in the trends and retrain notes)."""
     base = "borderline" if kind == "borderline" else "report"
     return base if label == "scam" else base + "_real"
+
+
+def _epoch_iso(iso) -> Optional[float]:
+    try:
+        return dt.datetime.fromisoformat(str(iso).replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return None
 
 
 def _check_reviewer(email: str, name: str) -> tuple:
@@ -384,6 +393,25 @@ class JsonlStore:
     def drop_session(self, token_hash: str) -> None:
         p = self._p("reviewer_sessions.jsonl")
         self._rewrite(p, [x for x in self._read(p) if x["token_hash"] != token_hash and x["expires_at"] > time.time()])
+
+    def undo_decision(self, report_id, reviewer: str, within: float) -> dict:
+        rows = self._read(self.reports_path)
+        try:
+            i = int(report_id)
+            r = rows[i]
+        except (TypeError, ValueError, IndexError):
+            raise ValueError("no such report")
+        when = _epoch_iso(r.get("reviewed_at"))
+        if r.get("status", "reported") == "reported" or r.get("reviewer") != (reviewer or "").strip()[:80] \
+                or when is None or time.time() - when > within:
+            raise ValueError("that decision can't be undone any more")
+        for k in ("reviewer", "note", "reviewed_at"):
+            r.pop(k, None)
+        r["status"] = "reported"
+        self._write(rows)
+        lp = self._p("labels.jsonl")
+        self._rewrite(lp, [x for x in self._read(lp) if str(x.get("report_id", "")) != str(i)])
+        return {**r, "id": str(i)}
 
     def drop_sessions(self, reviewer_id) -> None:
         p = self._p("reviewer_sessions.jsonl")
@@ -814,6 +842,27 @@ class PostgresStore:
     def drop_session(self, token_hash: str) -> None:
         with self._conn() as conn, conn.cursor() as cur:
             cur.execute("DELETE FROM reviewer_sessions WHERE token_hash = %s OR expires_at < now()", (token_hash,))
+
+    def undo_decision(self, report_id, reviewer: str, within: float) -> dict:
+        try:
+            rid = int(report_id)
+        except (TypeError, ValueError):
+            raise ValueError("no such report")
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE reports SET status = 'reported', reviewer = NULL, reviewed_at = NULL, note = NULL "
+                        "WHERE id = %s AND status <> 'reported' AND reviewer = %s "
+                        "AND reviewed_at > now() - make_interval(secs => %s) RETURNING id",
+                        (rid, (reviewer or "").strip()[:80], float(within)))
+            if cur.fetchone() is None:
+                raise ValueError("that decision can't be undone any more")
+            cur.execute("UPDATE indicators i SET status = 'reported', confirmed_by = NULL, confirmed_at = NULL "
+                        "WHERE i.status = 'confirmed' AND i.id IN (SELECT indicator_id FROM report_indicators WHERE report_id = %s) "
+                        "AND NOT EXISTS (SELECT 1 FROM report_indicators ri JOIN reports r ON r.id = ri.report_id "
+                        "WHERE ri.indicator_id = i.id AND r.status = 'confirmed')", (rid,))
+            cur.execute("DELETE FROM labels WHERE report_id = %s", (rid,))
+            cur.execute(self._REPORT_SQL.replace("WHERE (", "WHERE r.id = %(id)s AND ("),
+                        {"id": rid, "status": "", "school": "", "since": ""})
+            return self._record(cur.fetchone())
 
     def drop_sessions(self, reviewer_id) -> None:
         with self._conn() as conn, conn.cursor() as cur:

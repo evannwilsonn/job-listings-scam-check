@@ -196,3 +196,24 @@ def test_reviewer_accounts_and_sessions(pg):
     assert pg.session_reviewer(h) is None
     rep = pg.add_report(_report())
     assert pg.get_report(rep)["school"] == "fsu" and pg.get_report("999999") is None and pg.get_report("x") is None
+
+
+def test_undo_reverts_status_label_and_indicators(pg):
+    import pytest
+    from scam_detector.reports import make_report
+    a = pg.add_report(make_report("Pay the fee at https://undo-me.example to start", school="fsu"))
+    b = pg.add_report(make_report("Same link https://undo-me.example, different wording", school="fsu"))
+    pg.decide_report(a, "confirmed", "E. Wilson")
+    assert [m["value"] for m in pg.confirmed_matches({"domains": ["undo-me.example"]})] == ["undo-me.example"]
+    rec = pg.undo_decision(a, "E. Wilson", 120)
+    assert rec["status"] == "reported" and pg.labels() == []
+    assert pg.confirmed_matches({"domains": ["undo-me.example"]}) == []          # nobody else confirmed it
+    # an indicator another confirmed report also names stays confirmed
+    pg.decide_report(a, "confirmed", "E. Wilson")
+    pg.decide_report(b, "confirmed", "Someone Else")
+    pg.undo_decision(a, "E. Wilson", 120)
+    assert [m["value"] for m in pg.confirmed_matches({"domains": ["undo-me.example"]})] == ["undo-me.example"]
+    with pytest.raises(ValueError):
+        pg.undo_decision(b, "E. Wilson", 120)                                       # not their decision
+    with pytest.raises(ValueError):
+        pg.undo_decision(b, "Someone Else", 0)                                      # window passed

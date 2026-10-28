@@ -95,7 +95,8 @@ def test_cross_school_evidence_shows_on_the_card(_isolated_store, capsys):
     c = _client()
     _login(c, "jdoe@fsu.edu", pw)
     html = c.get("/review/queue").text
-    assert "Seen before" in html and "fast-campus-jobs.net" in html and "confirmed as a scam in 1 earlier report at 1 school" in html
+    assert "Confirmed as a scam at 1 school before" in html                          # the stamp in the card header
+    assert "fast-campus-jobs.net was confirmed as a scam in 1 earlier report at 1 school" in html
 
 
 def test_real_aggregator_unclear_and_csrf(_isolated_store, capsys):
@@ -201,3 +202,40 @@ def test_aggregator_signals_from_the_reports_own_link(_isolated_store, capsys):
     _login(c, "jdoe@fsu.edu", pw)
     html = c.get("/review/queue").text
     assert html.count("Looks like an aggregator or lead-gen page") == 1 and "The apply link forces an account signup" in html
+
+
+def test_evidence_first_card_and_undo(_isolated_store, capsys):
+    st = _isolated_store
+    pw = _account(capsys)
+    st.add_report(make_report(SCAM, school="fsu"))                                         # 0: high risk
+    st.add_report(make_report(REAL, school="fsu"))                                         # 1: low risk
+    c = _client()
+    _login(c, "jdoe@fsu.edu", pw)
+    html = c.get("/review/queue").text
+    card0 = html[html.index('id="r-0"'):html.index('id="r-1"')]
+    card1 = html[html.index('id="r-1"'):]
+    assert "<mark>mail you a check" in card0                                              # matched phrases marked in place
+    assert card0.index('class="text"') < card0.index('class="flags"') < card0.index('class="decide"')
+    assert '<h3 class="c-title">Our department needs a remote assistant.</h3>' in card0  # headline, greeting dropped
+    assert 'class="pill' not in card0 and card0.count('class="gauge') == 1                # one encoding of the risk
+    assert 'class="btn primary" name="action" value="scam"' in card0                       # leans scam
+    assert 'class="btn primary" name="action" value="real"' in card1                       # leans real
+    token = _csrf(html)
+    r = c.post("/review/decide", data={"csrf": token, "id": "0", "action": "scam", "tab": "waiting"})
+    assert r.headers["location"].endswith("&at=1#decided")                                 # back to where they were
+    page = c.get(r.headers["location"]).text
+    assert page.index('id="decided"') < page.index('id="r-1"') and "Undo" in page
+    assert st.labels() and st.templates()
+    r = c.post("/review/undo", data={"csrf": token, "id": "0", "tab": "waiting"})
+    assert r.status_code == 303 and "done=undone" in r.headers["location"]
+    rec = st.get_report("0")
+    assert rec["status"] == "reported" and "reviewer" not in rec and st.labels() == []
+    assert "is back in the queue" in c.get(r.headers["location"]).text
+    # someone else, or too late, can't undo
+    c.post("/review/decide", data={"csrf": token, "id": "0", "action": "real", "tab": "waiting"})
+    pw2 = _account(capsys, "other@fsu.edu", "Other Reviewer", "fsu")
+    o = _client()
+    _login(o, "other@fsu.edu", pw2)
+    assert o.post("/review/undo", data={"csrf": _csrf(o.get("/review").text), "id": "0"}).status_code == 409
+    with pytest.raises(ValueError):
+        st.undo_decision("0", "J. Doe", -1)                                                # window passed
