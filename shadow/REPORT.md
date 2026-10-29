@@ -1,6 +1,6 @@
 # Shadow test report
 
-Brand-new items since 2026-10-26, last run 2026-10-28 (0 new today). Labels come from the source (university-moderated job board = real; university security team's published scam email = scam) and are not reviewed.
+Brand-new items since 2026-10-26, last run 2026-10-29 (0 new today). Labels come from the source (university-moderated job board = real; university security team's published scam email = scam) and are not reviewed.
 
 | | Scams caught | Real jobs flagged |
 |---|---|---|
