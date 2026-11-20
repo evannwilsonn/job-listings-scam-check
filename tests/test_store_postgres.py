@@ -15,7 +15,7 @@ URL = os.environ.get("TEST_DATABASE_URL", "")
 pytestmark = pytest.mark.skipif(not re.search(r"/[\w-]*_test(\?|$)", URL), reason="no *_test database configured")
 
 TABLES = ("outcomes, cases, labels, sightings, report_indicators, templates, reports, indicators, model_traffic, release_log, "
-          "retrain_runs, models, reviewer_sessions, reviewers")
+          "retrain_runs, models, reviewer_sessions, reviewers, check_counts, template_hits")
 
 
 @pytest.fixture()
@@ -174,6 +174,14 @@ def test_reviewer_accounts_and_sessions(pg):
     from scam_detector import reviewers as acct
     rid = pg.add_reviewer("JDoe@FSU.edu", "J. Doe", "fsu", acct.hash_password("harbor violet ladder"))
     op = pg.add_reviewer("evan@example.com", "Evan", "", acct.hash_password("another long password"))
+    assert pg.reviewer_by_email("jdoe@fsu.edu")["role"] == "reviewer" and pg.reviewer_by_email("jdoe@fsu.edu")["title"] == ""
+    assert pg.set_reviewer("jdoe@fsu.edu", role="admin", title="Career Advisor")
+    assert {k: pg.reviewer_by_email("jdoe@fsu.edu")[k] for k in ("role", "title")} == {"role": "admin", "title": "Career Advisor"}
+    try:
+        pg.set_reviewer("jdoe@fsu.edu", role="owner")
+        raise AssertionError("an unknown role was accepted")
+    except ValueError:
+        pass
     import pytest
     with pytest.raises(ValueError):
         pg.add_reviewer("jdoe@fsu.edu", "Again", "fsu", "x")
@@ -196,3 +204,38 @@ def test_reviewer_accounts_and_sessions(pg):
     assert pg.session_reviewer(h) is None
     rep = pg.add_report(_report())
     assert pg.get_report(rep)["school"] == "fsu" and pg.get_report("999999") is None and pg.get_report("x") is None
+
+
+def test_undo_reverts_status_label_and_indicators(pg):
+    import pytest
+    from scam_detector.reports import make_report
+    a = pg.add_report(make_report("Pay the fee at https://undo-me.example to start", school="fsu"))
+    b = pg.add_report(make_report("Same link https://undo-me.example, different wording", school="fsu"))
+    pg.decide_report(a, "confirmed", "E. Wilson")
+    assert [m["value"] for m in pg.confirmed_matches({"domains": ["undo-me.example"]})] == ["undo-me.example"]
+    rec = pg.undo_decision(a, "E. Wilson", 120)
+    assert rec["status"] == "reported" and pg.labels() == []
+    assert pg.confirmed_matches({"domains": ["undo-me.example"]}) == []          # nobody else confirmed it
+    # an indicator another confirmed report also names stays confirmed
+    pg.decide_report(a, "confirmed", "E. Wilson")
+    pg.decide_report(b, "confirmed", "Someone Else")
+    pg.undo_decision(a, "E. Wilson", 120)
+    assert [m["value"] for m in pg.confirmed_matches({"domains": ["undo-me.example"]})] == ["undo-me.example"]
+    with pytest.raises(ValueError):
+        pg.undo_decision(b, "E. Wilson", 120)                                       # not their decision
+    with pytest.raises(ValueError):
+        pg.undo_decision(b, "Someone Else", 0)                                      # window passed
+
+
+def test_check_counts_add_up_and_skip_unknown_schools(pg):
+    pg.add_check_counts([("fsu", "2026-10-01", "clear", 3), ("fsu", "2026-10-01", "block", 1), ("nowhere", "2026-10-01", "clear", 9)])
+    pg.add_check_counts([("fsu", "2026-10-01", "clear", 2)])
+    assert sorted(pg.check_counts("fsu", "2026-10-01")) == [("2026-10-01", "block", 1), ("2026-10-01", "clear", 5)]
+    assert pg.check_counts("", "2026-10-02") == []
+
+
+def test_template_hits_add_up(pg):
+    pg.add_template_hits([("abc123", "2026-10-01", 2), ("abc123", "2026-10-02", 1), ("zzz", "2026-10-02", 5)])
+    pg.add_template_hits([("abc123", "2026-10-02", 4)])
+    assert pg.template_hits(["abc123", "nope"]) == {"abc123": 7}
+    assert pg.template_hits(["abc123"], "2026-10-02") == {"abc123": 5}

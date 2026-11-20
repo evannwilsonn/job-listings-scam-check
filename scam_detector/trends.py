@@ -17,6 +17,8 @@ import datetime as dt
 from collections import Counter
 from typing import Optional
 
+MIN_RATE = 10   # below this many confirmed scams a percentage means little; the dashboard uses the same cutoff
+
 # Scheme families, first match wins. Rule ids are the rulepack's (scam_detector/rulepack/core.json).
 FAMILIES = [
     ("Fake checks and money mule", {"fake_check_funds", "fake_check_es", "money_mule", "mule_recruitment", "reship_home", "crypto_atm"}),
@@ -65,6 +67,12 @@ def _ts(iso: str) -> float:
 
 def _scams(st, school: str, a: float, b: float) -> list[dict]:
     return [l for l in st.labels() if l["label"] == "scam" and l.get("school") == school and a <= (l.get("at") or 0) < b]
+
+
+def _checks(st, school: str, month: str) -> dict:
+    from . import counts
+    nxt = (dt.date.fromisoformat(month + "-01") + dt.timedelta(days=32)).replace(day=1).isoformat()
+    return counts.totals(school, month + "-01", st, until=nxt)
 
 
 def monthly(school: str, month: str, st=None, model=None) -> dict:
@@ -129,6 +137,7 @@ def monthly(school: str, month: str, st=None, model=None) -> dict:
         "domains": [(d, n, shared.get(d, 0)) for d, n in domains.most_common(8)],
         "harm": [(HARM[k], n) for k, n in harm.most_common()], "followups": answered,
         "retrains": Counter(r["status"] for r in runs), "release": st.release(),
+        "checks": _checks(st, school, month),
         "real_jobs_labeled": sum(1 for l in st.labels() if l["label"] == "legit" and l.get("school") == school and a <= (l.get("at") or 0) < b),
     }
 
@@ -144,6 +153,10 @@ def render(d: dict, school_name: Optional[str] = None) -> str:
     y, m = (int(x) for x in d["month"].split("-"))
     title = f"{school_name or d['school']}: job-scam trends, {calendar.month_name[m]} {y}"
     lines = [f"# {title}", ""]
+    used = d.get("checks") or {}
+    if used.get("checks"):
+        lines += [f"Students ran **{used['checks']:,} checks** this month; {used['flagged']:,} were flagged as likely scams "
+                  f"or sent to a person on the spot.", ""]
     if not d["confirmed"] and not d["confirmed_prev"]:
         return "\n".join(lines + ["No confirmed scams this month or last. Reports that reviewers haven't decided yet aren't counted."])
     lines += [f"**{d['confirmed']} confirmed scams** targeted students this month ({d['confirmed_prev']} in "
@@ -154,15 +167,16 @@ def render(d: dict, school_name: Optional[str] = None) -> str:
         lines += [f"| {n} | {a} | {b} | {_change(a, b)} |" for n, a, b in sorted(d["families"], key=lambda x: -x[1])]
         lines.append("")
     if d["confirmed"]:
-        pct = round(d["caught"] / d["confirmed"] * 100)
+        pct = f" ({round(d['caught'] / d['confirmed'] * 100)}%)" if d["confirmed"] >= MIN_RATE else ""
+        early = "" if d["confirmed"] >= MIN_RATE else " Too few confirmed scams yet to give a rate."
         lines += ["## Is the detector keeping up", "",
-                  f"Today's detector flags **{d['caught']} of {d['confirmed']}** ({pct}%) of this month's confirmed scams on its own."]
+                  f"Today's detector flags **{d['caught']} of {d['confirmed']}**{pct} of this month's confirmed scams on its own.{early}"]
         if d["misses"]:
-            lines += ["The ones it still misses are where the next rules and retrains come from:", ""]
+            lines += ["The ones it missed are what LureCheck learns from next:", ""]
             lines += [f"- \"{t.strip()}...\"" + (f" ({n} copies)" if n > 1 else "") for t, n in d["misses"]]
         lines.append("")
     if d["channels"]:
-        lines += ["## How they reached students", ""] + [f"- {n} scams {what}" for what, n in d["channels"]] + [""]
+        lines += ["## How they reached students", ""] + [f"- {n} scam{'s' if n != 1 else ''} {what}" for what, n in d["channels"]] + [""]
     if d["domains"]:
         lines += ["## Domains reviewers confirmed", "", "| Domain | Reports here | Schools that have seen it |", "|---|---|---|"]
         lines += [f"| {dom} | {n} | {s or '-'} |" for dom, n, s in d["domains"]]
@@ -176,12 +190,15 @@ def render(d: dict, school_name: Optional[str] = None) -> str:
     rt, rel = d["retrains"], d["release"]
     learned = []
     if sum(rt.values()):
-        learned.append(f"{sum(rt.values())} retrain attempt{'s' if sum(rt.values()) != 1 else ''} "
-                       f"({rt.get('candidate', 0)} passed the gate, {rt.get('refused', 0)} refused)")
+        n = sum(rt.values())
+        learned.append(f"{n} update{'s' if n != 1 else ''} to the detector tried "
+                       f"({rt.get('candidate', 0)} passed its safety checks, {rt.get('refused', 0)} held back)")
     if d["real_jobs_labeled"]:
-        learned.append(f"{d['real_jobs_labeled']} real jobs labeled, which keeps false alarms down")
+        n = d["real_jobs_labeled"]
+        learned.append(f"{n} real job{'s' if n != 1 else ''} labeled, which keeps false alarms down")
     if rel.get("stage") and rel["stage"] != "none":
-        learned.append(f"a new model is in {rel['stage']}")
+        learned.append("an updated detector is now live for everyone" if rel["stage"] == "full" else
+                       "an updated detector is rolling out to some checks first")
     if learned:
         lines += ["## What the detector learned", "", "This month: " + "; ".join(learned) + ".", ""]
     lines.append("_Generated by LureCheck from reviewer-confirmed reports. No student is named in this report._")

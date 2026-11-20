@@ -1,7 +1,8 @@
 """
 Reviewer accounts for the review page (/review). The only way accounts are made: there is no sign-up on the web.
 
-    python -m scam_detector.tools.reviewers add --email jdoe@fsu.edu --name "J. Doe" --school fsu
+    python -m scam_detector.tools.reviewers add --email jdoe@fsu.edu --name "J. Doe" --school fsu \
+        --role admin --title "Assistant Director, Career Center"     # an admin adds colleagues from the Team page
     python -m scam_detector.tools.reviewers add --email you@example.com --name "Evan" --school ""   # every school
     python -m scam_detector.tools.reviewers list
     python -m scam_detector.tools.reviewers reset jdoe@fsu.edu        # new temporary password, logs out everywhere
@@ -28,6 +29,8 @@ def main(argv=None) -> int:
     a.add_argument("--email", required=True)
     a.add_argument("--name", required=True)
     a.add_argument("--school", required=True, help='a school code from schools.json, or "" for every school')
+    a.add_argument("--role", default="reviewer", choices=("reviewer", "admin"))
+    a.add_argument("--title", default="", help='job title shown next to the name, e.g. "Career Advisor"')
     sub.add_parser("list")
     for c in ("reset", "disable", "enable"):
         sub.add_parser(c).add_argument("email")
@@ -40,7 +43,8 @@ def main(argv=None) -> int:
             return 2
         pw = acct.temp_password()
         try:
-            st.add_reviewer(acct.normalize_email(args.email), args.name, args.school, acct.hash_password(pw))
+            st.add_reviewer(acct.normalize_email(args.email), args.name, args.school, acct.hash_password(pw),
+                            role=args.role, title=args.title)
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
@@ -51,7 +55,7 @@ def main(argv=None) -> int:
     if args.cmd == "list":
         for r in st.reviewers():
             last = dt.datetime.fromtimestamp(r["last_login"]).strftime("%Y-%m-%d") if r.get("last_login") else "never"
-            print(f"{r['email']:40} {r['name']:24} {r['school'] or '(every school)':16} "
+            print(f"{r['email']:40} {r['name']:24} {r['school'] or '(every school)':16} {r.get('role', 'reviewer'):9} "
                   f"{'active' if r['active'] else 'DISABLED':9} last login {last}")
         return 0
 

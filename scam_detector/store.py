@@ -23,9 +23,17 @@ Reviewer accounts for the review page (review_web.py, reviewers.py, tools/review
 
     store.add_reviewer(email, name, school, pw_hash) -> id     school "" means every school
     store.reviewer_by_email(email) -> record with pw_hash, or None / store.reviewers() -> [record without pw_hash]
-    store.set_reviewer(email, pw_hash=None, active=None) -> bool / store.touch_login(reviewer_id)
+    store.set_reviewer(email, pw_hash=None, active=None, role=None, title=None) -> bool / store.touch_login(reviewer_id)
+    accounts carry role ("reviewer" | "admin": an admin manages colleagues at their school) and a job title
     store.add_session(token_hash, reviewer_id, expires_at) / store.session_reviewer(token_hash) -> record or None
     store.drop_session(token_hash) / store.drop_sessions(reviewer_id) / store.get_report(id) -> record or None
+    store.undo_decision(id, reviewer, within_seconds) -> record    the same reviewer, shortly after: back in the queue,
+        its training label removed, and (Postgres) its indicators un-confirmed unless another confirmed report names them
+
+How many checks students ran (counts.py), numbers only:
+
+    store.add_check_counts([(school, day, band, n)]) / store.check_counts(school, since_day) -> [(day, band, n)]
+    store.add_template_hits([(template_key, day, n)]) / store.template_hits(keys, since_day="") -> {key: n}
 
 A career center's own lists (guardrails.py):
 
@@ -83,6 +91,13 @@ def _label_source(kind, label: str) -> str:
     return base if label == "scam" else base + "_real"
 
 
+def _epoch_iso(iso) -> Optional[float]:
+    try:
+        return dt.datetime.fromisoformat(str(iso).replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return None
+
+
 def _check_reviewer(email: str, name: str) -> tuple:
     email, name = (email or "").strip().lower(), (name or "").strip()[:80]
     if "@" not in email or email.startswith("@") or email.endswith("@") or len(email) > 254:
@@ -90,6 +105,19 @@ def _check_reviewer(email: str, name: str) -> tuple:
     if not name:
         raise ValueError("a reviewer needs a name (it's recorded on every decision)")
     return email, name
+
+
+ROLES = ("reviewer", "admin")
+
+
+def _check_role(role: Optional[str], title: Optional[str]) -> tuple:
+    if role is not None and role not in ROLES:
+        raise ValueError(f"role must be one of {', '.join(ROLES)}")
+    if title is not None:
+        title = " ".join(title.split())
+        if len(title) > 80:
+            raise ValueError("a title can be at most 80 characters")
+    return role, title
 
 
 def _check_decision(decision: str, reviewer: str) -> None:
@@ -313,6 +341,50 @@ class JsonlStore:
             self._rewrite(p, rows)
         return hit
 
+    # ---- check counts (counts.py) ----
+
+    def add_check_counts(self, rows) -> None:
+        p = self._p("check_counts.json")
+        data = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+        for school, day, band, n in rows:
+            k = f"{school}|{day}|{band}"
+            data[k] = data.get(k, 0) + int(n)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data), encoding="utf-8")
+        tmp.replace(p)
+
+    def add_template_hits(self, rows) -> None:
+        p = self._p("template_hits.json")
+        data = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+        for key, day, n in rows:
+            k = f"{key}|{day}"
+            data[k] = data.get(k, 0) + int(n)
+        tmp = p.with_suffix(".tmp")
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(json.dumps(data), encoding="utf-8")
+        tmp.replace(p)
+
+    def template_hits(self, keys, since: str = "") -> dict:
+        p = self._p("template_hits.json")
+        data = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+        want, out = set(keys), {}
+        for k, n in data.items():
+            key, day = k.split("|")
+            if key in want and day >= (since or ""):
+                out[key] = out.get(key, 0) + n
+        return out
+
+    def check_counts(self, school: str, since: str) -> list:
+        p = self._p("check_counts.json")
+        data = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+        out = []
+        for k, n in data.items():
+            s, day, band = k.split("|")
+            if (not school or s == school) and day >= since:
+                out.append((day, band, n))
+        return out
+
     # ---- reviewer accounts (review_web.py) ----
 
     def get_report(self, report_id) -> Optional[dict]:
@@ -324,21 +396,23 @@ class JsonlStore:
         return {**rows[i], "id": str(i)} if 0 <= i < len(rows) else None
 
     def _reviewer_rows(self) -> list:
-        return self._read(self._p("reviewers.jsonl"))
+        return [{"role": "reviewer", "title": "", **r} for r in self._read(self._p("reviewers.jsonl"))]
 
     @staticmethod
     def _public(r: dict) -> dict:
         return {k: v for k, v in r.items() if k != "pw_hash"}
 
-    def add_reviewer(self, email: str, name: str, school: str, pw_hash: str) -> str:
+    def add_reviewer(self, email: str, name: str, school: str, pw_hash: str, role: str = "reviewer",
+                     title: str = "") -> str:
         email, name = _check_reviewer(email, name)
+        role, title = _check_role(role, title)
         rows = self._reviewer_rows()
         if any(r["email"] == email for r in rows):
             raise ValueError(f"{email} already has an account")
         rid = str(len(rows) + 1)
         self._append(self._p("reviewers.jsonl"), {"id": rid, "email": email, "name": name, "school": school or "",
                                                   "pw_hash": pw_hash, "active": True, "created_at": time.time(),
-                                                  "last_login": None})
+                                                  "last_login": None, "role": role, "title": title})
         return rid
 
     def reviewer_by_email(self, email: str) -> Optional[dict]:
@@ -348,7 +422,9 @@ class JsonlStore:
     def reviewers(self) -> List[dict]:
         return [self._public(r) for r in self._reviewer_rows()]
 
-    def set_reviewer(self, email: str, pw_hash: Optional[str] = None, active: Optional[bool] = None) -> bool:
+    def set_reviewer(self, email: str, pw_hash: Optional[str] = None, active: Optional[bool] = None,
+                     role: Optional[str] = None, title: Optional[str] = None) -> bool:
+        role, title = _check_role(role, title)
         p, rows, hit = self._p("reviewers.jsonl"), self._reviewer_rows(), False
         for r in rows:
             if r["email"] == (email or "").strip().lower():
@@ -356,6 +432,10 @@ class JsonlStore:
                     r["pw_hash"] = pw_hash
                 if active is not None:
                     r["active"] = bool(active)
+                if role is not None:
+                    r["role"] = role
+                if title is not None:
+                    r["title"] = title
                 hit = True
         if hit:
             self._rewrite(p, rows)
@@ -384,6 +464,25 @@ class JsonlStore:
     def drop_session(self, token_hash: str) -> None:
         p = self._p("reviewer_sessions.jsonl")
         self._rewrite(p, [x for x in self._read(p) if x["token_hash"] != token_hash and x["expires_at"] > time.time()])
+
+    def undo_decision(self, report_id, reviewer: str, within: float) -> dict:
+        rows = self._read(self.reports_path)
+        try:
+            i = int(report_id)
+            r = rows[i]
+        except (TypeError, ValueError, IndexError):
+            raise ValueError("no such report")
+        when = _epoch_iso(r.get("reviewed_at"))
+        if r.get("status", "reported") == "reported" or r.get("reviewer") != (reviewer or "").strip()[:80] \
+                or when is None or time.time() - when > within:
+            raise ValueError("that decision can't be undone any more")
+        for k in ("reviewer", "note", "reviewed_at"):
+            r.pop(k, None)
+        r["status"] = "reported"
+        self._write(rows)
+        lp = self._p("labels.jsonl")
+        self._rewrite(lp, [x for x in self._read(lp) if str(x.get("report_id", "")) != str(i)])
+        return {**r, "id": str(i)}
 
     def drop_sessions(self, reviewer_id) -> None:
         p = self._p("reviewer_sessions.jsonl")
@@ -740,6 +839,33 @@ class PostgresStore:
                         (removed_by.strip()[:80], school, kind, value))
             return cur.rowcount > 0
 
+    # ---- check counts (counts.py) ----
+
+    def add_check_counts(self, rows) -> None:
+        with self._conn() as conn, conn.cursor() as cur:
+            known = [(s, d, b, int(n)) for s, d, b, n in rows if self._school(cur, s) is not None]
+            if known:
+                cur.executemany("INSERT INTO check_counts (school_id, day, band, n) VALUES (%s, %s, %s, %s) "
+                                "ON CONFLICT (school_id, day, band) DO UPDATE SET n = check_counts.n + EXCLUDED.n", known)
+
+    def add_template_hits(self, rows) -> None:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.executemany("INSERT INTO template_hits (text_key, day, n) VALUES (%s, %s, %s) "
+                            "ON CONFLICT (text_key, day) DO UPDATE SET n = template_hits.n + EXCLUDED.n",
+                            [(k, d, int(n)) for k, d, n in rows])
+
+    def template_hits(self, keys, since: str = "") -> dict:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("SELECT text_key, sum(n) FROM template_hits WHERE text_key = ANY(%s) AND day >= %s::date GROUP BY text_key",
+                        (list(keys), since or "1970-01-01"))
+            return {k: int(n) for k, n in cur.fetchall()}
+
+    def check_counts(self, school: str, since: str) -> list:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("SELECT day, band, sum(n) FROM check_counts WHERE (%(s)s = '' OR school_id = %(s)s) "
+                        "AND day >= %(d)s::date GROUP BY day, band", {"s": school or "", "d": since})
+            return [(d.isoformat(), b, int(n)) for d, b, n in cur.fetchall()]
+
     # ---- reviewer accounts (review_web.py) ----
 
     def get_report(self, report_id) -> Optional[dict]:
@@ -753,24 +879,28 @@ class PostgresStore:
             row = cur.fetchone()
             return self._record(row) if row else None
 
-    _REVIEWER_COLS = "r.id, r.email, r.name, coalesce(r.school_id, ''), r.active, r.created_at, r.last_login"
+    _REVIEWER_COLS = ("r.id, r.email, r.name, coalesce(r.school_id, ''), r.active, r.created_at, r.last_login, "
+                      "r.role, r.title")
 
     @staticmethod
     def _reviewer(row) -> dict:
-        rid, email, name, school, active, created, last = row[:7]
+        rid, email, name, school, active, created, last, role, title = row[:9]
         rec = {"id": str(rid), "email": email, "name": name, "school": school, "active": active,
-               "created_at": _epoch(created), "last_login": _epoch(last)}
-        if len(row) > 7:
-            rec["pw_hash"] = row[7]
+               "created_at": _epoch(created), "last_login": _epoch(last), "role": role, "title": title}
+        if len(row) > 9:
+            rec["pw_hash"] = row[9]
         return rec
 
-    def add_reviewer(self, email: str, name: str, school: str, pw_hash: str) -> str:
+    def add_reviewer(self, email: str, name: str, school: str, pw_hash: str, role: str = "reviewer",
+                     title: str = "") -> str:
         email, name = _check_reviewer(email, name)
+        role, title = _check_role(role, title)
         with self._conn() as conn, conn.cursor() as cur:
             if school and self._school(cur, school) is None:
                 raise ValueError(f"unknown school {school!r}")
-            cur.execute("INSERT INTO reviewers (email, name, school_id, pw_hash) VALUES (%s, %s, %s, %s) "
-                        "ON CONFLICT (email) DO NOTHING RETURNING id", (email, name, school or None, pw_hash))
+            cur.execute("INSERT INTO reviewers (email, name, school_id, pw_hash, role, title) "
+                        "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (email) DO NOTHING RETURNING id",
+                        (email, name, school or None, pw_hash, role, title))
             row = cur.fetchone()
             if row is None:
                 raise ValueError(f"{email} already has an account")
@@ -788,10 +918,13 @@ class PostgresStore:
             cur.execute(f"SELECT {self._REVIEWER_COLS} FROM reviewers r ORDER BY r.id")
             return [self._reviewer(x) for x in cur.fetchall()]
 
-    def set_reviewer(self, email: str, pw_hash: Optional[str] = None, active: Optional[bool] = None) -> bool:
+    def set_reviewer(self, email: str, pw_hash: Optional[str] = None, active: Optional[bool] = None,
+                     role: Optional[str] = None, title: Optional[str] = None) -> bool:
+        role, title = _check_role(role, title)
         with self._conn() as conn, conn.cursor() as cur:
-            cur.execute("UPDATE reviewers SET pw_hash = coalesce(%s, pw_hash), active = coalesce(%s, active) "
-                        "WHERE email = %s", (pw_hash, active, (email or "").strip().lower()))
+            cur.execute("UPDATE reviewers SET pw_hash = coalesce(%s, pw_hash), active = coalesce(%s, active), "
+                        "role = coalesce(%s, role), title = coalesce(%s, title) WHERE email = %s",
+                        (pw_hash, active, role, title, (email or "").strip().lower()))
             return cur.rowcount > 0
 
     def touch_login(self, reviewer_id) -> None:
@@ -814,6 +947,27 @@ class PostgresStore:
     def drop_session(self, token_hash: str) -> None:
         with self._conn() as conn, conn.cursor() as cur:
             cur.execute("DELETE FROM reviewer_sessions WHERE token_hash = %s OR expires_at < now()", (token_hash,))
+
+    def undo_decision(self, report_id, reviewer: str, within: float) -> dict:
+        try:
+            rid = int(report_id)
+        except (TypeError, ValueError):
+            raise ValueError("no such report")
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE reports SET status = 'reported', reviewer = NULL, reviewed_at = NULL, note = NULL "
+                        "WHERE id = %s AND status <> 'reported' AND reviewer = %s "
+                        "AND reviewed_at > now() - make_interval(secs => %s) RETURNING id",
+                        (rid, (reviewer or "").strip()[:80], float(within)))
+            if cur.fetchone() is None:
+                raise ValueError("that decision can't be undone any more")
+            cur.execute("UPDATE indicators i SET status = 'reported', confirmed_by = NULL, confirmed_at = NULL "
+                        "WHERE i.status = 'confirmed' AND i.id IN (SELECT indicator_id FROM report_indicators WHERE report_id = %s) "
+                        "AND NOT EXISTS (SELECT 1 FROM report_indicators ri JOIN reports r ON r.id = ri.report_id "
+                        "WHERE ri.indicator_id = i.id AND r.status = 'confirmed')", (rid,))
+            cur.execute("DELETE FROM labels WHERE report_id = %s", (rid,))
+            cur.execute(self._REPORT_SQL.replace("WHERE (", "WHERE r.id = %(id)s AND ("),
+                        {"id": rid, "status": "", "school": "", "since": ""})
+            return self._record(cur.fetchone())
 
     def drop_sessions(self, reviewer_id) -> None:
         with self._conn() as conn, conn.cursor() as cur:

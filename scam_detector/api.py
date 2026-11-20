@@ -24,7 +24,7 @@ from typing import List
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from . import guardrails, learning, ml
+from . import counts, guardrails, learning, ml
 from .conversation import analyze_thread
 from .attestations import attestation_findings
 from .employer import board_finding, check_job_board, screen_employer, verification_script
@@ -207,6 +207,7 @@ def analyze(posting: PostingIn, request: Request) -> dict:
     tm = learning.template_finding("\n".join(x for x in (posting.title, posting.description) if x))
     if tm:
         extra.append(tm)
+        counts.record_hit((tm.get("memory") or {}).get("key", ""))    # how often confirmed scripts catch later copies
     _, att = attestation_findings(posting.company, posting.sender, posting.description, out["findings"] + extra)
     extra += att
     if extra or rules["trusted"] or rules["blocked"]:
@@ -235,6 +236,7 @@ def analyze(posting: PostingIn, request: Request) -> dict:
     if posting.follow_up:
         out["case_code"] = open_case(out, posting.school)
         out["follow_up_after"] = follow_up_date()
+    counts.record(posting.school, out["band"])          # a number per school, day and band; never the text
     return out
 
 
